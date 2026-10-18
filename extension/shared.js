@@ -1,6 +1,6 @@
 /* Original implementation. This file is shared by the worker, popup and page. */
 (() => {
-  const VERSION = '0.3.4';
+  const VERSION = '0.3.5';
   const finite = x => typeof x === 'number' && Number.isFinite(x);
   const clamp = n => Math.min(100, Math.max(0, n));
   const plans = {team:'BUSINESS',business:'BUSINESS',free:'FREE',plus:'PLUS',pro:'PRO',go:'GO',enterprise:'ENTERPRISE',edu:'EDU'};
@@ -59,6 +59,22 @@
   }
   const percent = (used,mode) => mode==='used'?Math.round(clamp(used)):100-Math.round(clamp(used));
   const color = used => used>=85?'#d74444':used>=70?'#c48512':'#269b78';
+  const usageTone = used => !finite(used)?'normal':used>=90?'critical':used>=70?'warning':'normal';
+  function usageBarColor(used){
+    if(!finite(used))return '#737b85';
+    const value=clamp(used),start=value<70?[38,155,120]:[214,160,44],end=value<70?[214,160,44]:[220,69,73];
+    const t=value<70?value/70:Math.min(1,(value-70)/20);
+    return '#'+start.map((v,i)=>Math.round(v+(end[i]-v)*t).toString(16).padStart(2,'0')).join('');
+  }
+  function countTone(remaining,reference){
+    if(!finite(remaining)||remaining<0)return 'normal';
+    if(remaining===0)return 'critical';
+    if(!finite(reference)||reference<=0)return 'normal';
+    const used=Math.max(0,reference-remaining);
+    if(used>=Math.max(1,Math.floor(reference*.9)))return 'critical';
+    if(used>=Math.max(1,Math.floor(reference*.7)))return 'warning';
+    return 'normal';
+  }
   const planLabel = p => plans[p] || String(p || 'ACCOUNT').toUpperCase();
   function countdown(at, now=Date.now()) {
     if (!finite(at)) return 'Reset time unavailable';
@@ -192,5 +208,5 @@
     if(usage&&now-usage.fetchedAt>10*60000)return {muted:true,message:`Last successful reading: ${at}. Refresh to update.`};
     return {muted:false,message:null};
   }
-  globalThis.LimitsCore={VERSION,finite,parseUsage,parseInit,parseClaude,parseGemini,percent,color,planLabel,windowLabel,countdown,providers,providerForURL,readPageContext,parseResetText,displayWindows,usageHealth,isLive};
+  globalThis.LimitsCore={VERSION,finite,parseUsage,parseInit,parseClaude,parseGemini,percent,color,usageTone,usageBarColor,countTone,planLabel,windowLabel,countdown,providers,providerForURL,readPageContext,parseResetText,displayWindows,usageHealth,isLive};
 })();

@@ -1,0 +1,32 @@
+# Local dependencies and generated output
+node_modules/
+coverage/
+playwright-report/
+test-results/
+dist/
+build/
+artifacts/
+.cache/
+*.log
+*.zip
+*.crx
+
+# Credentials, browser exports and local diagnostics
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.har
+diagnostics/
+browser-profile/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~

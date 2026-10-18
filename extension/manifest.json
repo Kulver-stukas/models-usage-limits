@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Usage Meter — ChatGPT, Claude, Gemini",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "minimum_chrome_version": "120",
   "description": "Session and weekly usage for the active ChatGPT, Claude or Gemini tab. Optional compact page widget.",
   "permissions": ["storage", "alarms", "scripting", "cookies"],

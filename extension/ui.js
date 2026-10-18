@@ -16,14 +16,23 @@
   .popup-line{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center;font-size:12px}.popup-line .right{text-align:right;font-weight:600}.name{font-size:12px;font-weight:600;min-width:0}.value{font-size:11px;font-weight:600;white-space:nowrap}
   .track{height:6px;background:var(--track);border-radius:4px;overflow:hidden}.fill{height:100%;border-radius:4px;transition:width .2s}
   .popup-window .track{margin-top:8px}.reset{font-size:10px;line-height:1.35;color:var(--muted)}.popup-window .reset{margin-top:6px}
-  .widget .head{padding:7px 10px;background:var(--header);gap:5px}.widget .brand{font-size:12px;font-weight:500}.widget .icon{width:20px;height:20px}.widget .icon svg{width:14px;height:14px}
-  .widget .body{padding:11px 14px 13px}.widget .window+.window{margin-top:12px}.widget .name{font-weight:500;font-size:12px}
+  .widget{font-family:ui-sans-serif,-apple-system,system-ui,"Segoe UI",Helvetica,Arial,sans-serif;font-size:13px;line-height:1.4;font-weight:400;letter-spacing:normal;-webkit-font-smoothing:antialiased;--usage-warning:#a16b00;--usage-critical:#d13438}
+  .widget.dark{--usage-warning:#f2c45b;--usage-critical:#ff8588}
+  .widget [data-tone="warning"]{color:var(--usage-warning)}.widget [data-tone="critical"]{color:var(--usage-critical)}
+  .widget .head{padding:8px 12px;background:var(--header);gap:8px}.widget .brand{font-size:13px;font-weight:600;line-height:18px;min-width:0;overflow:hidden;text-overflow:ellipsis}.widget .icon{width:18px;height:18px}.widget .icon svg{width:14px;height:14px}
+  .widget .tier{font-size:9px;line-height:12px;font-weight:600;padding:2px 8px}
+  .widget .body{padding:12px 16px 14px}.widget .window+.window{margin-top:12px}.widget .name{font-weight:500;font-size:12px}
+  .widget .window-head{gap:8px;margin-bottom:4px}.widget .window-head .reset{font-size:10px;line-height:1.4}
+  .widget .bar-line{gap:8px}.widget .bar-line .track{height:6px}.widget .bar-line .value{font-size:11px;line-height:1.4;font-weight:700;min-width:26px;font-variant-numeric:tabular-nums}
+  .widget .fill{transition:width .2s,background-color .25s}
+  .widget .section{font-size:10px;font-weight:600;letter-spacing:.6px;margin:12px 0 6px}.widget .feature+.feature{margin-top:4px}.widget .feature .row{align-items:baseline}.widget .feature .name{font-weight:400}.widget .feature .value{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}.widget .feature .reset{font-size:10px;line-height:1.4;margin-top:1px}
+  .widget .resets{margin-top:8px}
   .window-head{display:flex;align-items:baseline;justify-content:space-between;gap:7px;margin-bottom:5px}.window-head .reset{font-size:9px;white-space:nowrap}
   .bar-line{display:flex;align-items:center;gap:7px}.bar-line .track{flex:1;height:5px}.bar-line .value{font-size:10px;min-width:25px}.bar-line .value:last-child{text-align:right}
   .section{font-size:9px;letter-spacing:.75px;color:var(--muted);text-transform:uppercase;margin:15px 0 9px}.feature+.feature{margin-top:8px}.feature .name{font-weight:400}.feature .reset{margin-top:2px;font-size:9px}.feature .row{gap:8px}.feature .value{font-size:11px}
   .resets{font-size:10px;color:var(--muted);margin-top:12px;display:flex;justify-content:space-between}.resets strong{font-weight:600;color:var(--fg)}
   .status{font-size:10px;line-height:1.45;color:var(--muted);padding:7px 9px;background:var(--soft);border-radius:5px;margin-bottom:10px}.status.warn{color:#b17a16}.section-error{font-size:10px;line-height:1.4;color:#b17a16;margin-bottom:8px}.empty{font-size:11px;line-height:1.5;color:var(--muted)}
-  .drag{touch-action:none;cursor:move}.strip .head{padding:6px 8px;border:0;gap:5px;min-height:32px}.strip .tier{padding:0 6px;font-size:8px}.strip-summary{display:flex;gap:8px;flex:1;min-width:0;align-items:center;white-space:nowrap}.strip-item{font-size:10px;display:inline-flex;gap:3px;align-items:baseline}.strip-label{font-size:9px;color:var(--muted)}.strip-used{font-weight:600;color:#269b78}.strip .icon{width:18px;height:18px}.strip .icon svg{width:12px;height:12px}
+  .drag{touch-action:none;cursor:move}.strip .head{padding:6px 8px;border:0;gap:5px;min-height:32px}.strip .tier{padding:0 6px;font-size:8px}.strip-summary{display:flex;gap:8px;flex:1;min-width:0;align-items:center;white-space:nowrap}.strip-item{font-size:10px;display:inline-flex;gap:3px;align-items:baseline;font-variant-numeric:tabular-nums}.strip-label{font-size:9px;color:var(--muted)}.strip-used{font-weight:600}.strip .icon{width:18px;height:18px}.strip .icon svg{width:12px;height:12px}
   .settings .body{padding:16px}.setting{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px}.setting+.setting{margin-top:18px}.setting-note{font-size:10px;line-height:1.5;color:var(--muted);margin-top:10px}
   .segments{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.segments button{border:0;background:none;padding:5px 9px;font-size:11px;color:var(--muted)}.segments button.selected{background:#269b78;color:#fff}
   .switch{appearance:none;width:30px;height:18px;background:var(--track);border:1px solid var(--line);border-radius:12px;position:relative;margin:0;cursor:pointer;flex-shrink:0}.switch:before{content:"";position:absolute;width:12px;height:12px;background:#fff;top:2px;left:2px;border-radius:50%;box-shadow:0 1px 3px #0002}.switch:checked{background:#269b78;border-color:#269b78}.switch:checked:before{left:14px}
@@ -59,12 +68,13 @@
     for(const w of windows || []){
       const row=el('div',widget?'window':'window popup-window');row.dataset.key=w.id;
       const used=C.percent(w.used,'used'),left=C.percent(w.used,'left');
-      const track=el('div','track'),fill=el('div','fill');fill.style.width=used+'%';fill.style.background=C.color(w.used);track.append(fill);
+      const track=el('div','track'),fill=el('div','fill');fill.style.width=used+'%';fill.style.background=widget?C.usageBarColor(w.used):C.color(w.used);track.append(fill);
       for(const [k,v] of Object.entries({role:'progressbar','aria-label':`${w.label}, ${used}% used, ${left}% left`,'aria-valuenow':String(used),'aria-valuemin':'0','aria-valuemax':'100'}))track.setAttribute(k,v);
       if(widget){
         const head=el('div','window-head'),reset=el('span','reset',w.resetAt?absolute(w.resetAt):w.resetText||absolute(null));
         if(w.resetAt)reset.title=new Date(w.resetAt).toLocaleString();head.append(el('span','name',w.label),reset);
-        const line=el('div','bar-line');line.append(el('span','value',`${used}%`),track,el('span','value',`${left}%`));line.title=`${used}% used · ${left}% left`;row.append(head,line);
+        const line=el('div','bar-line'),usedValue=el('span','value',`${used}%`),leftValue=el('span','value',`${left}%`);
+        usedValue.dataset.tone=leftValue.dataset.tone=C.usageTone(w.used);line.append(usedValue,track,leftValue);line.title=`${used}% used · ${left}% left`;row.append(head,line);
       }else{
         const head=el('div','popup-line');head.append(el('span','',`${used}% used`),el('span','name',w.label),el('span','right',`${left}% left`));
         const reset=el('div','reset',C.countdown(w.resetAt));if(w.resetAt)reset.title=new Date(w.resetAt).toLocaleString();row.append(head,track,reset);
@@ -79,7 +89,10 @@
       body.append(el('div','section','Feature limits'));
       if(issue(view,'features'))body.append(el('div','section-error','Feature quotas could not be updated.'));
       for(const f of init?.features || []){
-        const item=el('div','feature');item.dataset.key=f.id;const top=el('div','row');top.append(el('span','name',f.label),el('span','value',`${f.remaining} left`));item.append(top);
+        const item=el('div','feature');item.dataset.key=f.id;const top=el('div','row'),value=el('span','value',`${f.remaining} left`),reference=view.snapshot.featureReferences?.[f.id];
+        value.dataset.tone=C.countTone(f.remaining,reference);
+        value.title=reference>0?`Colour reference: highest observed remaining count (${reference}) for this account and plan.`:f.remaining===0?'No requests remaining':'Total allowance not reported';
+        top.append(el('span','name',f.label),value);item.append(top);
         if(f.resetAt){const reset=el('div','reset',absolute(f.resetAt));reset.title='Server-reported estimate; may move between requests.';item.append(reset);}body.append(item);
       }
     }
@@ -156,7 +169,7 @@
         const summary=el('div','strip-summary');
         for(const w of windows.filter(w=>w.main)){
           const chip=el('span','strip-item'),short=w.seconds===18000?'5h':w.seconds===604800?'Week':w.seconds%86400===0?`${w.seconds/86400}d`:w.label.replace(' limit','');
-          const used=C.percent(w.used,'used'),left=C.percent(w.used,'left'),value=el('span','strip-used',String(used));value.style.color=C.color(w.used);chip.append(el('span','strip-label',short),value,el('span','',`/${left}%`));chip.title=`${w.label}: ${used}% used · ${left}% left`;summary.append(chip);
+          const used=C.percent(w.used,'used'),left=C.percent(w.used,'left'),value=el('span','strip-used',String(used)),remaining=el('span','strip-left',`/${left}%`);value.dataset.tone=remaining.dataset.tone=C.usageTone(w.used);chip.append(el('span','strip-label',short),value,remaining);chip.title=`${w.label}: ${used}% used · ${left}% left`;summary.append(chip);
         }
         if(!summary.childNodes.length)summary.append(el('span','empty',view?.error?'Update unavailable':'Checking…'));summary.title='Used / left';header.append(summary);
       }else header.append(el('span','brand',titleText));

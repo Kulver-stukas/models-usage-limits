@@ -18,6 +18,7 @@ test('Business: percentages, absolute resets, zero applicable resets, model avai
   assert.deepEqual(u.resets,{available:3,applicable:0});
   assert.equal(u.models[0].available,true);
   assert.equal(C.color(38),C.color(100-62));
+  assert.equal(C.percent(38.5,'used')+C.percent(38.5,'left'),100);
 });
 test('Free: a single 30-day window, no invented weekly limit; zero feature retained',()=>{
   const u=C.parseUsage({rate_limit:{primary_window:{used_percent:0,limit_window_seconds:2592000},secondary_window:null}},now);
@@ -69,6 +70,21 @@ test('backoff survives worker restarts',async()=>{
   time+=60001;const restarted=new Engine({...options,initial:saved});await restarted.refresh();
   assert.equal(saved.failures,2);assert.equal(saved.retryAt,time+120000);
 });
+test('manual refresh bypasses network backoff after 15s but never rate-limit backoff',async()=>{
+  for(const kind of ['network','rate']){
+    let time=now,calls=0;
+    const engine=new Engine({load:async()=>{calls++;if(calls===1)throw new Error(kind);return bundle();},save:async()=>{},now:()=>time});
+    await engine.refresh();time+=16000;await engine.refresh(true);
+    assert.equal(calls,kind==='rate'?1:2);
+  }
+});
+test('feature backoff is isolated from healthy main usage and skips a rate-limited source',async()=>{
+  let time=now,calls=0,options;
+  const engine=new Engine({load:async opts=>{calls++;options=opts;return {...bundle(),init:null,initSkipped:opts.skipFeatures,errors:opts.skipFeatures?[]:['features: rate']};},save:async()=>{},now:()=>time});
+  await engine.refresh();assert.equal(engine.retryAt,0);assert.equal(engine.featureRetryAt,time+60000);
+  time+=16000;await engine.refresh(true);assert.equal(calls,2);assert.equal(options.skipFeatures,true);
+  assert.equal(engine.view().snapshot.usage.fetchedAt,now);assert.equal(engine.view().snapshot.errors[0],'features: rate');
+});
 test('serialized persistence cannot restore stale data after a newer update',async()=>{
   const gate=deferred(),saved=[];let calls=0;
   const engine=new Engine({load:async()=>bundle(),save:async(s)=>{if(++calls===1)await gate.promise;saved.push(s.hint);},now:()=>now});
@@ -96,4 +112,52 @@ test('API: reject session switch and mismatching response account; keep valid us
   await assert.rejects(()=>loadBundle(mockApi({switchAccount:true}).fetch),/context/);
   await assert.rejects(()=>loadBundle(mockApi({mismatch:true}).fetch),/context/);
   const result=await loadBundle(mockApi({failInit:true}).fetch);assert(result.usage);assert.equal(result.init,null);assert.deepEqual(result.errors,['features: rate']);
+});
+test('API: skipped feature endpoint still verifies the session before and after',async()=>{
+  const mock=mockApi();const result=await loadBundle(mock.fetch,()=>now,{skipFeatures:true});
+  assert.equal(mock.requests.length,3);assert.equal(result.initSkipped,true);assert.equal(result.init,null);assert.deepEqual(result.errors,[]);
+});
+test('passive live usage is account-checked and survives a late empty REST response',async()=>{
+ let time=now;const gate=deferred();let count=0;
+ const engine=new Engine({load:async()=>++count===1?bundle():gate.promise,save:async()=>{},now:()=>time});await engine.refresh();
+ time+=61000;const pending=engine.refresh();const live={windows:[{id:'five_hour',used:45,main:true,resetAt:time+100000}],fetchedAt:time+1,source:'Claude SSE event'};
+ assert.equal(await engine.acceptUsage('other-seat',live),false);assert.equal(await engine.acceptUsage('business',live),true);
+ gate.resolve({...bundle(),usage:{windows:[],fetchedAt:time+20}});await pending;assert.equal(engine.view().snapshot.usage.windows[0].used,45);
+ assert.equal(engine.view().snapshot.usage.source,'Claude SSE event');
+});
+test('a fresh empty REST reading cannot suppress an earlier but valid passive reading',async()=>{
+ const engine=new Engine({load:async()=>({...bundle(),usage:{windows:[],fetchedAt:now+100}}),save:async()=>{},now:()=>now});await engine.refresh();
+ const result=await engine.acceptUsage('business',{windows:[{id:'five_hour',used:40,main:true,resetAt:now+10000}],fetchedAt:now,source:'Claude SSE event'});
+ assert.equal(result,true);assert.equal(engine.view().snapshot.usage.windows[0].used,40);
+});
+test('native Gemini reset labels: local time, explicit date, year rollover and unknown forms',()=>{
+ const at=new Date(2026,9,17,21,0).getTime();
+ assert.equal(C.parseResetText('Resets at 9:37 PM',at),new Date(2026,9,17,21,37).getTime());
+ assert.equal(C.parseResetText('Resets Oct 19 at 6:37 PM',at),new Date(2026,9,19,18,37).getTime());
+ assert.equal(C.parseResetText('Сброс 19 окт. в 18:37',at),new Date(2026,9,19,18,37).getTime());
+ assert.equal(C.parseResetText('Resets at 12:00 AM',at),new Date(2026,9,18,0,0).getTime());
+ assert.equal(C.parseResetText('Resets Jan 1 at 1:30 AM',new Date(2026,11,31,21).getTime()),new Date(2027,0,1,1,30).getTime());
+ assert.equal(C.parseResetText('Resets tomorrow',at),null);assert.equal(C.parseResetText('Resets Feb 31 at 1:30 PM',at),null);assert.equal(C.parseResetText('at 13:37 PM',at),null);
+ const usage={fetchedAt:at,source:'Gemini Usage page',windows:[{used:9,resetAt:null,resetText:'Resets Oct 19 at 6:37 PM'}]};
+ assert.equal(C.displayWindows(usage)[0].resetAt,new Date(2026,9,19,18,37).getTime());
+});
+test('chat-event usage remains a last report until reset, not a periodic polling result',()=>{
+ const usage={source:'Claude live event',fetchedAt:now-60*60000,windows:[{used:26,resetAt:now+60000,main:true}]};
+ assert.equal(C.usageHealth({snapshot:{usage}},now).muted,false);assert.equal(C.usageHealth({snapshot:{usage}},now).message,null);
+ assert.equal(C.displayWindows(usage,now+60001).length,0);assert.match(C.usageHealth({snapshot:{usage}},now+60001).message,/window ended/);
+ const failed={snapshot:{usage:{...usage,source:'Gemini Usage page'}},error:'format'};assert.match(C.usageHealth(failed,now).message,/Last update failed/);
+});
+test('transport cooldown survives persistence without refreshing old readings or clearing errors',async()=>{
+ let saved,time=now;
+ const engine=new Engine({load:async()=>{const e=new Error('format');e.providerState={jsonRetryAt:time+30*60000};throw e;},save:async s=>{saved=s;},now:()=>time});
+ await engine.refresh();assert.equal(saved.providerState.jsonRetryAt,time+30*60000);
+ time+=60001;
+ const resumed=new Engine({initial:saved,load:async options=>{assert.equal(options.providerState.jsonRetryAt,now+30*60000);return {deferred:true,providerState:options.providerState};},save:async()=>{},now:()=>time});
+ resumed.error='format';await resumed.refresh();assert.equal(resumed.error,'format');assert.equal(resumed.view().snapshot,null);
+});
+test('a successful native reading clears the prior transport error and keeps observation time',async()=>{
+ let time=now,n=0;
+ const load=async()=>{n++;if(n===2){const e=new Error('format');e.providerState={jsonRetryAt:time+30*60000};throw e;}return {...bundle(),usage:{...bundle().usage,source:'Gemini Usage page',fetchedAt:time},providerState:{jsonRetryAt:time+30*60000}};};
+ const engine=new Engine({load,save:async()=>{},now:()=>time});await engine.refresh();time+=61000;await engine.refresh();assert.equal(engine.error,'format');assert.equal(engine.view().snapshot.usage.fetchedAt,now);
+ time+=16000;await engine.refresh(true);assert.equal(engine.error,null);assert.equal(engine.view().snapshot.usage.fetchedAt,time);assert.equal(engine.confirmed,true);
 });

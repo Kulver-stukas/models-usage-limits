@@ -3,43 +3,90 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import fs from 'node:fs/promises';
 import {Engine} from '../extension/engine.mjs';
+import {fingerprint} from '../extension/api.mjs';
 import '../extension/shared.js';
 const Core=globalThis.LimitsCore;
 const source=(await fs.readFile(new URL('../extension/background.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 const tick=()=>new Promise(r=>setTimeout(r,0));
+const settle=async()=>{for(let i=0;i<20;i++)await tick();};
 function event(){const listeners=[];return {listeners,addListener:f=>listeners.push(f)};}
-function fixture(time) {
-  return {key:'account-a',plan:'team',label:'BUSINESS · test',errors:[],usage:Core.parseUsage({plan_type:'team',rate_limit:{primary_window:{used_percent:38,limit_window_seconds:18000,reset_after_seconds:3600},secondary_window:{used_percent:19,limit_window_seconds:604800,reset_after_seconds:6000}}},time),init:Core.parseInit({limits_progress:[]},time)};
+const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
+function fixture(provider,time){
+  const used={chatgpt:38,claude:24,gemini:63}[provider];
+  return {key:provider+'-account',plan:'pro',label:provider+' · test',errors:[],usage:Core.parseUsage({rate_limit:{primary_window:{used_percent:used,limit_window_seconds:18000,reset_after_seconds:3600},secondary_window:{used_percent:used+1,limit_window_seconds:604800,reset_after_seconds:6000}}},time)};
 }
-async function worker(storage={},time=Date.now()) {
-  const badge={},alarms=new Map(),requests=[];let currentTime=time;
+async function worker({storage={},session={},time=Date.now(),load=fixture,active=1,open}={}){
+  const badges=new Map(),alarms=new Map(),requests=[],actionWrites=[],scriptingCalls=[];let currentTime=time;
+  const tabData=new Map((open||[{id:1,url:'https://chatgpt.com/'},{id:2,url:'https://claude.ai/new'},{id:3,url:'https://example.com/'},{id:4,url:'https://gemini.google.com/app'},{id:5,url:'https://claude.ai/chat/b'}]).map(t=>[t.id,t]));
+  let selected=active,cookie='secret-seat-a';
   class Clock extends Date {static now(){return currentTime;}}
   class TestEngine extends Engine {constructor(options){super({...options,now:()=>currentTime});}}
   const chrome={runtime:{id:'test-extension',onMessage:event(),onInstalled:event(),onStartup:event()},
-    storage:{local:{get:async keys=>Object.fromEntries(keys.map(k=>[k,structuredClone(storage[k])])),set:async items=>Object.assign(storage,structuredClone(items))}},
-    action:{setBadgeText:async v=>badge.text=v.text,setBadgeBackgroundColor:async v=>badge.color=v.color,setBadgeTextColor:async()=>{},setTitle:async v=>badge.title=v.title},
-    alarms:{get:async n=>alarms.get(n),create:async(n,v)=>alarms.set(n,v),onAlarm:event()},
-    tabs:{query:async()=>[],create:async()=>{}},scripting:{executeScript:async()=>{}}};
-  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,chrome,structuredClone,Date:Clock,loadBundle:async()=>{requests.push(currentTime);return fixture(currentTime);}});
-  new vm.Script(source,{filename:'background.js'}).runInContext(context);
-  for(let i=0;i<8;i++)await tick();
-  const message=body=>new Promise(resolve=>chrome.runtime.onMessage.listeners[0](body,{id:'test-extension'},resolve));
-  const alarm=async name=>{chrome.alarms.onAlarm.listeners[0]({name});for(let i=0;i<5;i++)await tick();};
-  return {storage,badge,requests,alarms,message,alarm,advance:ms=>{currentTime+=ms;}};
+    storage:{local:{get:async keys=>Object.fromEntries(keys.map(k=>[k,structuredClone(storage[k])])),set:async items=>Object.assign(storage,structuredClone(items))},session:{get:async keys=>Object.fromEntries(keys.map(k=>[k,structuredClone(session[k])])),set:async items=>Object.assign(session,structuredClone(items))}},
+    action:Object.fromEntries(['setBadgeText','setBadgeBackgroundColor','setBadgeTextColor','setTitle'].map(name=>[name,async value=>{actionWrites.push({name,...value});if(name==='setBadgeText')badges.set(value.tabId,value.text);} ])),
+    alarms:{get:async n=>alarms.get(n),create:async(n,v)=>alarms.set(n,v),clear:async n=>alarms.delete(n),onAlarm:event()},
+    windows:{onFocusChanged:event(),WINDOW_ID_NONE:-1},
+    cookies:{get:async()=>cookie?{value:cookie}:undefined,onChanged:event()},
+    tabs:{get:async id=>{if(!tabData.has(id))throw new Error('closed');return structuredClone(tabData.get(id));},
+      query:async q=>q.active?[tabData.get(selected)].filter(Boolean):[...tabData.values()].filter(t=>Core.providerForURL(t.url)&&(typeof q.url!=='string'||t.url.startsWith('https://claude.ai/'))),create:async()=>{},onActivated:event(),onUpdated:event(),onRemoved:event()},
+    scripting:{executeScript:async spec=>{
+      scriptingCalls.push(spec.target.tabId);
+      if(spec.files)return [];
+      const t=tabData.get(spec.target.tabId),provider=Core.providerForURL(t?.url);if(!provider)throw new Error('context');
+      const hint={chatgpt:'a',claude:'b',gemini:t.url.includes('/u/1')?'d':'c'}[provider].repeat(24);
+      return [{frameId:0,result:{provider,hint,scope:provider==='chatgpt'?'chatgpt':provider+':'+hint,org:provider==='claude'?'org-chat-001':null,accountIndex:t.url.includes('/u/1')?1:0}}];
+    }} };
+  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,chrome,fingerprint,structuredClone,URL,Date:Clock,prepareClaude:async()=>{},readClaudeStream:async()=>null,loadProvider:async ctx=>{requests.push({provider:ctx.provider,scope:ctx.scope});return load(ctx.provider,currentTime,ctx);}});
+  new vm.Script(source,{filename:'background.js'}).runInContext(context);await settle();
+  const message=(body,id)=>new Promise(resolve=>chrome.runtime.onMessage.listeners[0](body,id?{id:'test-extension',tab:tabData.get(id),url:tabData.get(id)?.url}:{id:'test-extension'},resolve));
+  const alarm=async name=>{chrome.alarms.onAlarm.listeners[0]({name});await settle();};
+  return {storage,session,badges,requests,alarms,message,alarm,actionWrites,scriptingCalls,advance:ms=>{currentTime+=ms;},
+    activate:async id=>{selected=id;chrome.tabs.onActivated.listeners[0]({tabId:id});await settle();},
+    navigate:async(id,url)=>{Object.assign(tabData.get(id),{url});chrome.tabs.onUpdated.listeners[0](id,{url,status:'loading'},tabData.get(id));await settle();chrome.tabs.onUpdated.listeners[0](id,{status:'complete'},tabData.get(id));await settle();},
+    spa:async(id,url)=>{Object.assign(tabData.get(id),{url});chrome.tabs.onUpdated.listeners[0](id,{url},tabData.get(id));await settle();},
+    changeSession:async value=>{cookie=value;chrome.cookies.onChanged.listeners[0]({cookie:{name:'sessionKey',domain:'.claude.ai'},removed:!value,cause:'explicit'});await settle();}};
 }
-test('worker startup, UI refresh, settings and alarms use one source of truth',async()=>{
-  const w=await worker();assert.equal(w.requests.length,1);
-  assert.equal(w.alarms.get('badge').periodInMinutes,0.5);assert.equal(w.storage.publicView.snapshot.usage.windows.length,2);
-  await w.message({type:'settings',value:{mode:'used',widget:false}});
-  assert.equal(w.storage.settings.mode,'used');assert.match(w.badge.text,/^(38|19)%$/);
-  await w.message({type:'settings',value:{mode:'left'}});assert.match(w.badge.text,/^(62|81)%$/);
-  const first=w.badge.text;w.advance(30000);await w.alarm('badge');assert.notEqual(w.badge.text,first);
-  assert.equal(w.requests.length,1);
+test('each provider has its own values; same-account tabs share one request; unsupported badge is empty',async()=>{
+  const w=await worker();assert.equal(w.requests.length,3);assert.equal(w.storage.activeView.provider,'chatgpt');
+  assert.match(w.badges.get(1),/^(62|61)%$/);assert.match(w.badges.get(2),/^(76|75)%$/);assert.match(w.badges.get(4),/^(37|36)%$/);
+  assert.equal(w.badges.get(2),w.badges.get(5));assert.equal(w.alarms.get('badge').periodInMinutes,.5);
+  await w.activate(3);assert.equal(w.badges.get(3),'');assert.equal(w.storage.activeView.unsupported,true);assert.equal(w.storage.activeView.snapshot,null);
+  assert(w.actionWrites.filter(x=>x.name==='setBadgeText'&&x.tabId===undefined).every(x=>x.text===''));
 });
-test('suspended worker restart restores cache without polling on every badge tick',async()=>{
-  const now=Date.now(),w=await worker({},now),before=w.storage.publicView.revision;
-  const restarted=await worker(w.storage,now+30000);
-  assert.equal(restarted.requests.length,0);assert(restarted.storage.publicView.revision>before);
-  await restarted.alarm('badge');assert.equal(restarted.requests.length,0);
-  restarted.advance(5*60000);await restarted.alarm('refresh');assert.equal(restarted.requests.length,1);
+test('popup follows active tab; used/left and rotation do not trigger HTTP polls',async()=>{
+  const w=await worker();await w.activate(4);await w.message({type:'popup'});assert.equal(w.storage.activeView.provider,'gemini');
+  await w.message({type:'settings',value:{mode:'used'}});assert.match(w.badges.get(4),/^(63|64)%$/);assert.match(w.badges.get(2),/^(24|25)%$/);
+  const before=w.badges.get(4);w.advance(30000);await w.alarm('badge');assert.notEqual(w.badges.get(4),before);assert.equal(w.requests.length,3);
+});
+test('worker restart restores cache without HTTP on badge rotation',async()=>{
+  const now=Date.now(),w=await worker({time:now}),restarted=await worker({storage:w.storage,session:w.session,time:now+30000});assert.equal(restarted.requests.length,0);assert.equal(restarted.scriptingCalls.length,0);
+  const before=restarted.badges.get(1);restarted.advance(30000);await restarted.alarm('badge');assert.notEqual(restarted.badges.get(1),before);assert.equal(restarted.requests.length,0);assert.equal(restarted.scriptingCalls.length,0);restarted.advance(5*60000);await restarted.alarm('refresh');assert.equal(restarted.requests.length,3);
+});
+test('late Claude response cannot populate a non-chat active tab or a Gemini widget',async()=>{
+  const gate=deferred(),w=await worker({load:(p,t)=>p==='claude'?gate.promise:fixture(p,t)});
+  await w.activate(3);gate.resolve(fixture('claude',Date.now()));await settle();assert.equal(w.badges.get(3),'');assert.equal(w.storage.activeView.snapshot,null);
+  assert.equal(w.storage.tabViews[4].provider,'gemini');assert.equal(w.storage.tabViews[4].snapshot.usage.windows[0].used,63);
+});
+test('navigation clears old percentages and does not zero a different tab',async()=>{
+  const w=await worker(),before=w.badges.get(5);await w.navigate(2,'https://example.com/');assert.equal(w.badges.get(2),'');assert.equal(w.badges.get(5),before);
+  await w.navigate(2,'https://gemini.google.com/app');assert.match(w.badges.get(2),/^(37|36)%$/);assert.equal(w.requests.length,3);
+});
+test('Google account indexes have separate contexts and cookies are not persisted',async()=>{
+  const w=await worker();await w.navigate(3,'https://gemini.google.com/u/1/app');assert.equal(w.requests.filter(r=>r.provider==='gemini').length,2);
+  assert.notEqual(w.storage.tabViews[3].scope,w.storage.tabViews[4].scope);assert(!JSON.stringify(w.storage).includes('secret-seat-a'));
+});
+test('Claude logout immediately hides prior-seat data; new session gets a different scope',async()=>{
+  const w=await worker(),old=w.storage.tabViews[2].scope;await w.changeSession('');assert.equal(w.storage.tabViews[2].snapshot,null);assert.equal(w.badges.get(2),'!');
+  await w.changeSession('secret-seat-b');assert.notEqual(w.storage.tabViews[2].scope,old);assert.equal(w.requests.filter(r=>r.provider==='claude').length,2);assert(!JSON.stringify(w.storage).includes('secret-seat-b'));
+});
+test('same-provider SPA navigation does not blank the badge',async()=>{
+ const w=await worker(),before=w.actionWrites.length;await w.spa(1,'https://chatgpt.com/c/new-chat');
+ const changed=w.actionWrites.slice(before).filter(x=>x.name==='setBadgeText'&&x.tabId===1);
+ assert(changed.length>0);assert(changed.every(x=>x.text!==''));assert.equal(w.storage.tabViews[1].snapshot.usage.windows[0].used,38);
+});
+test('upgrade clears old Gemini transport cooldown while preserving a captured descriptor',async()=>{
+ const w=await worker(),scope=w.storage.tabViews[4].scope;
+ w.storage.providerBuild='0.3.2';w.storage.providerStates[scope].providerState={jsonRetryAt:Date.now()+1800000,domRetryAt:Date.now()+600000,geminiQuery:{signature:'retained-signature'}};
+ const next=await worker({storage:w.storage,session:w.session});
+ assert.equal(next.storage.providerStates[scope].providerState.jsonRetryAt,0);assert.equal(next.storage.providerStates[scope].providerState.domRetryAt,0);assert.equal(next.storage.providerStates[scope].providerState.geminiQuery.signature,'retained-signature');
 });

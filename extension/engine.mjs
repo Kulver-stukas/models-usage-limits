@@ -74,9 +74,16 @@ export class Engine {
           this.featureRetryAt=this.now()+Math.min(30*60000,60000*2**Math.min(this.featureFailures-1,5));
         }else {this.featureFailures=0;this.featureRetryAt=0;this.featureError=null;}
         this.diagnostics=bundle.diagnostics||null;
+        // Count-only feature endpoints do not report a total. Keep a local
+        // colour reference, never a claimed provider allowance or percentage.
+        // A verified account key and plan isolate each observed high-water mark.
+        const samePlan=old.plan===bundle.plan,featureReferences=samePlan?{...old.featureReferences}:{};
+        for(const f of [...(samePlan?old.init?.features||[]:[]),...(bundle.init?.features||[])]){
+          if(Number.isFinite(f.remaining)&&f.remaining>=0)featureReferences[f.id]=Math.max(featureReferences[f.id]||0,f.remaining);
+        }
         this.accounts[bundle.key]={...old,label:bundle.label,plan:bundle.plan,diagnostics:bundle.diagnostics||null,
           ...(bundle.usage?{usage:bundle.usage}:{}),...(bundle.init?{init:bundle.init}:{}),
-          errors,verifiedAt:this.now()};
+          featureReferences,errors,verifiedAt:this.now()};
         const keys=Object.keys(this.accounts).filter(k=>k!==this.selected).sort((a,b)=>(this.accounts[a].verifiedAt || 0)-(this.accounts[b].verifiedAt || 0));
         while(Object.keys(this.accounts).length>5)delete this.accounts[keys.shift()];
         this.error=errors.length?errors.join(' · '):null;

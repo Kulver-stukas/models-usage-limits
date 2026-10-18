@@ -64,7 +64,7 @@
     if(!settings.widget||!supported()){host?.remove();host=null;shadow=null;return;}
     if(!host||!host.isConnected) {
       host=document.createElement('div');host.id='usage-meter-widget';
-      Object.assign(host.style,{position:'fixed',zIndex:'2147483646',right:'20px',bottom:'20px',width:'min(304px, calc(100vw - 24px))'});
+      Object.assign(host.style,{position:'fixed',zIndex:'2147483646',right:'20px',bottom:'20px',width:'min(280px, calc(100vw - 24px))'});
       shadow=host.attachShadow({mode:'open'});document.documentElement.append(host);
     }
     const card=LimitsUI.render(shadow,view,settings,{
