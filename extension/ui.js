@@ -58,10 +58,11 @@
     return errors.find(e=>e.startsWith(source+':')) || (view?.error && !view.error.includes(':')?view.error:null);
   }
   function addStatus(body,view){
-    if(view?.unsupported){body.append(el('div','status','Open a ChatGPT, Claude or Gemini tab to see its usage.'));return;}
+    if(view?.unsupported){body.append(el('div','status','Open a ChatGPT, Claude, Gemini or Grok tab to see its usage.'));return;}
     const name=C.providers[view?.provider]?.name||'the chat';
     if(!view?.snapshot)body.append(el('div','status',view?.error?`Could not verify usage. Open ${name} and refresh.`:'Checking the current account…'));
     else {const health=C.usageHealth(view);if(health.message)body.append(el('div','status warn',health.message));}
+    if(view?.snapshot?.usage?.notice)body.append(el('div','status',view.snapshot.usage.notice));
     if(view?.snapshot?.usage?.reached)body.append(el('div','status warn','Plan limit reached'));
   }
   function addWindows(body,windows,widget){
@@ -79,10 +80,16 @@
         const head=el('div','popup-line');head.append(el('span','',`${used}% used`),el('span','name',w.label),el('span','right',`${left}% left`));
         const reset=el('div','reset',C.countdown(w.resetAt));if(w.resetAt)reset.title=new Date(w.resetAt).toLocaleString();row.append(head,track,reset);
       }
+      if(C.finite(w.remaining)&&C.finite(w.total))row.append(el('div','reset',`${w.remaining} / ${w.total} requests left`));
       body.append(row);
     }
   }
   function addFeatures(body,view){
+    if(view?.provider==='grok'){
+      const products=view.snapshot?.usage?.products||[];
+      if(products.length){body.append(el('div','section','Usage by product'));for(const p of products){const row=el('div','feature'),line=el('div','row');line.append(el('span','name',p.label),el('span','value',`${Math.round(p.percent*10)/10}% used`));row.append(line);body.append(row);}}
+      return;
+    }
     if(view?.provider!=='chatgpt')return;
     const init=view?.snapshot?.init;
     if(init?.features?.length || issue(view,'features')){
@@ -110,6 +117,7 @@
     function line(label,value){const row=el('div','detail-row');row.append(el('span','',label),el('span','',String(value)));details.append(row);}
     line('Account',snap?.label || 'Not verified');
     if(usage?.source)line('Usage source',usage.source);
+    for(const product of usage?.products||[])line(product.label+' · shared pool',`${Math.round(product.percent*10)/10}% used`);
     const health=C.usageHealth(view);if(health.note)details.append(el('div','setting-note',health.note));
     if(usage?.unavailable)details.append(el('div','setting-note',usage.unavailable));
     const diagnostics=view?.diagnostics||snap?.diagnostics;

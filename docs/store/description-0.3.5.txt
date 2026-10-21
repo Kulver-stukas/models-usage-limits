@@ -1,0 +1,21 @@
+See your remaining ChatGPT, Claude and Gemini usage without repeatedly opening account settings.
+
+Usage Meter shows the limits reported by your signed-in web sessions. No API keys, CLI tools or separate desktop applications are required.
+
+AT A GLANCE
+• A toolbar percentage that follows the active supported tab. Other websites have no percentage badge.
+• A popup showing used and remaining percentages together, with time until reset.
+• An optional draggable widget showing quotas and reset dates inside the chat page.
+• Three widget views: full details, usage bars only, or a compact summary strip.
+• Light and dark styling that follows the page, with colour warnings as usage approaches its limit.
+• Additional ChatGPT feature counts and limit-reset credits when the service reports them.
+
+Choose whether the toolbar badge shows used or remaining usage. When the provider reports several main usage windows, the badge alternates between them. The popup and widget always show both values.
+
+ACCOUNT AND DATA HANDLING
+The extension reads account identifiers, session authentication, usage metadata and relevant page/network data only to retrieve and display your quotas and keep account caches separate. Processing and storage are local to your browser. Authentication is used only with the corresponding provider. No analytics, advertising trackers or developer-operated data server are included. Relevant chat-response streams may be inspected for quota events; chat messages are not saved or sent to the developer.
+
+PROVIDER DIFFERENCES
+Available information depends on your provider and plan. A ChatGPT Free account's reported Work/Codex pool is not a counter for every ChatGPT message. On the Claude Free account tested, the first numeric reading may require a normal chat reply. Gemini readings concern the Gemini web service.
+
+Usage Meter displays provider-reported limits and does not increase or bypass them. It is an independent extension, unaffiliated with OpenAI, Anthropic or Google. Internal website changes can affect compatibility.

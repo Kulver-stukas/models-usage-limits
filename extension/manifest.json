@@ -1,19 +1,78 @@
 {
   "manifest_version": 3,
-  "name": "Usage Meter — ChatGPT, Claude, Gemini",
-  "version": "0.3.5",
+  "name": "Usage Meter — ChatGPT, Claude, Gemini, Grok",
+  "version": "0.3.6",
   "minimum_chrome_version": "120",
-  "description": "Session and weekly usage for the active ChatGPT, Claude or Gemini tab. Optional compact page widget.",
-  "permissions": ["storage", "alarms", "scripting", "cookies"],
-  "host_permissions": ["https://chatgpt.com/*", "https://claude.ai/*", "https://gemini.google.com/*"],
-  "incognito": "split",
-  "background": {"service_worker": "background.js", "type": "module"},
-  "action": {"default_title": "Usage Meter", "default_popup": "popup.html", "default_icon": {"16":"icons/16.png", "48":"icons/48.png", "128":"icons/128.png"}},
-  "icons": {"16":"icons/16.png", "48":"icons/48.png", "128":"icons/128.png"},
-  "content_scripts": [
-    {"matches":["https://claude.ai/*"],"js":["claude-bridge.js"],"world":"MAIN","run_at":"document_start"},
-    {"matches":["https://gemini.google.com/*"],"js":["gemini-bridge.js"],"world":"MAIN","run_at":"document_start","all_frames":true},
-    {"matches":["https://chatgpt.com/*","https://claude.ai/*","https://gemini.google.com/*"],"js":["shared.js","ui.js","content.js"],"run_at":"document_idle"}
+  "description": "Track usage limits and remaining quotas for ChatGPT, Claude, Gemini and Grok. Toolbar badge and optional compact widget.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting",
+    "cookies"
   ],
-  "content_security_policy": {"extension_pages":"script-src 'self'; object-src 'none'"}
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://grok.com/*"
+  ],
+  "incognito": "split",
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Usage Meter",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "claude-bridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "gemini-bridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://grok.com/*"
+      ],
+      "js": [
+        "shared.js",
+        "ui.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  }
 }

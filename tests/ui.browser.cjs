@@ -73,7 +73,7 @@ function snapshot(provider){
   for(const w of snaps.claude.usage.windows)if(w.main)w.observation='event';
   snaps.claude.usage={...snaps.claude.usage,source:'Claude live event',observation:'event',fetchedAt:Date.now()-3600000};selected='claude';await publishData();await popup.getByText('Claude Usage',{exact:true}).waitFor();assert.equal(await popup.locator('.status.warn').count(),0);
   snaps.claude.usage.windows[0].resetAt=Date.now()-1000;await publishData();assert.equal(await popup.getByText('24% used',{exact:true}).count(),0);assert.equal(await popup.getByRole('progressbar').count(),2);
-  selected=null;await publishData();await popup.getByText('Open a ChatGPT, Claude or Gemini tab to see its usage.',{exact:true}).waitFor();assert.equal(await popup.getByRole('progressbar').count(),0);assert(await popup.getByRole('button',{name:'Refresh usage'}).isDisabled());
+  selected=null;await publishData();await popup.getByText('Open a ChatGPT, Claude, Gemini or Grok tab to see its usage.',{exact:true}).waitFor();assert.equal(await popup.getByRole('progressbar').count(),0);assert(await popup.getByRole('button',{name:'Refresh usage'}).isDisabled());
   await one.getByRole('button',{name:'Hide widget',exact:true}).click();for(const p of [one,two,claude,gemini])await p.locator('#usage-meter-widget').waitFor({state:'detached'});
   assert.deepEqual(errors,[]);assert(!messages.some(m=>m.type==='ping'));
   console.log('PASS: provider headers, four independent widgets, popup active context, used/left, three collapse levels, theme, stable DOM, drag, reinjection and unsupported tab.');

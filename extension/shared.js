@@ -1,6 +1,6 @@
 /* Original implementation. This file is shared by the worker, popup and page. */
 (() => {
-  const VERSION = '0.3.5';
+  const VERSION = '0.3.6';
   const finite = x => typeof x === 'number' && Number.isFinite(x);
   const clamp = n => Math.min(100, Math.max(0, n));
   const plans = {team:'BUSINESS',business:'BUSINESS',free:'FREE',plus:'PLUS',pro:'PRO',go:'GO',enterprise:'ENTERPRISE',edu:'EDU'};
@@ -83,22 +83,23 @@
     if (mins>=1440) return `Resets in ${Math.floor(mins/1440)}d ${Math.floor(mins%1440/60)}h`;
     return mins>=60?`Resets in ${Math.floor(mins/60)}h ${mins%60}m`:`Resets in ${mins}m`;
   }
-  const providers={chatgpt:{name:'ChatGPT',home:'https://chatgpt.com/',usage:'https://chatgpt.com/settings/usage?tab=overview'},claude:{name:'Claude',home:'https://claude.ai/new',usage:'https://claude.ai/settings/usage'},gemini:{name:'Gemini',home:'https://gemini.google.com/app',usage:'https://gemini.google.com/usage'}};
+  const providers={chatgpt:{name:'ChatGPT',home:'https://chatgpt.com/',usage:'https://chatgpt.com/settings/usage?tab=overview'},claude:{name:'Claude',home:'https://claude.ai/new',usage:'https://claude.ai/settings/usage'},grok:{name:'Grok',home:'https://grok.com/',usage:'https://grok.com/'},gemini:{name:'Gemini',home:'https://gemini.google.com/app',usage:'https://gemini.google.com/usage'}};
   function providerForURL(value){
     try{
       const u=new URL(value);if(u.protocol!=='https:')return null;
-      const p={'chatgpt.com':'chatgpt','claude.ai':'claude','gemini.google.com':'gemini'}[u.hostname];
-      if(!p||/^\/(api|backend-api|_|auth|login|logout|share|admin|public)(\/|$)/.test(u.pathname))return null;
+      const p={'chatgpt.com':'chatgpt','claude.ai':'claude','gemini.google.com':'gemini','grok.com':'grok'}[u.hostname];
+      if(!p||/^\/(api|backend-api|rest|grok_api_v2\.GrokBuildBilling|_|auth|login|logout|share|admin|public)(\/|$)/.test(u.pathname))return null;
       return p;
     }catch{return null;}
   }
   // Self-contained: also used by scripting.executeScript before content.js exists.
   // Only bootstrap identity and account cookies are inspected, never chat text.
   async function readPageContext(){
-    const host=location.hostname,provider={'chatgpt.com':'chatgpt','claude.ai':'claude','gemini.google.com':'gemini'}[host];
+    const host=location.hostname,provider={'chatgpt.com':'chatgpt','claude.ai':'claude','gemini.google.com':'gemini','grok.com':'grok'}[host];
     if(!provider)return null;
     const cookie=name=>{const v=document.cookie.split(';').map(s=>s.trim()).find(s=>s.startsWith(name+'='));try{return v?decodeURIComponent(v.slice(name.length+1)):'';}catch{return '';}};
     let identity='',org=null,accountIndex=0;
+    if(provider==='grok')identity='session';
     if(provider==='chatgpt')identity=cookie('_account')||'profile';
     if(provider==='claude'){
       org=cookie('lastActiveOrg');if(!/^[a-z0-9-]{8,80}$/i.test(org))org=null;

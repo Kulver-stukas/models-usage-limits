@@ -1,4 +1,5 @@
 import './shared.js';
+import {loadGrok,requestGrok,grokSession} from './grok.mjs';
 import {fingerprint,loadBundle} from './api.mjs';
 import {scrapeGemini} from './gemini-dom.mjs';
 import {readClaudeStream} from './claude-live.mjs';
@@ -146,6 +147,7 @@ export async function loadGemini(context,request,now=Date.now,dom=null,options={
 }
 export async function loadProvider(context,tabId,options){
   if(context.provider==='chatgpt')return loadBundle(undefined,undefined,options);
+  if(context.provider==='grok')return loadGrok(context,kind=>requestGrok(tabId,kind),grokSession);
   const request=spec=>tabRequest(tabId,spec);
   if(context.provider==='gemini')return loadGemini(context,request,Date.now,probeOptions=>scrapeGemini(tabId,context,probeOptions),{...options,discover:()=>discoverGemini(tabId,context)});
   if(context.provider==='claude')return loadClaude(context,request,async()=>{

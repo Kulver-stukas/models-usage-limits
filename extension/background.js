@@ -1,10 +1,11 @@
 import './shared.js';
+import {grokSession} from './grok.mjs';
 import {Engine} from './engine.mjs';
 import {fingerprint} from './api.mjs';
 import {loadProvider} from './providers.mjs';
 import {prepareClaude,readClaudeStream} from './claude-live.mjs';
 const C=globalThis.LimitsCore;
-const patterns=['https://chatgpt.com/*','https://claude.ai/*','https://gemini.google.com/*'];
+const patterns=['https://chatgpt.com/*','https://claude.ai/*','https://gemini.google.com/*','https://grok.com/*'];
 const defaults={mode:'left',widget:false,widgetLevel:0,position:null};
 const records=new Map(),tabs=new Map(),bindingEpoch=new Map();
 let settings={...defaults},states={},views={},revision=0,activeId=null,badgeIndex=Math.floor(Date.now()/30000),bindingToken=0,restored=false;
@@ -64,6 +65,7 @@ function getRecord(context){
     if(tabs.get(id)?.context?.scope!==context.scope)throw new Error('network');
     const current=await chrome.scripting.executeScript({target:{tabId:id},func:C.readPageContext});
     const check=current.find(v=>v.frameId===0)?.result;
+    if(context.provider==='grok'&&await grokSession()!==t.context.sessionHash)throw new Error('context');
     if(!check||check.error||check.hint!==t.context.hint||tabs.get(id)?.context?.scope!==context.scope)throw new Error('context');
     return result;
   },save:async(state,view)=>{
@@ -88,6 +90,10 @@ async function bindTab(tab){
       const session=await chrome.cookies.get({url:'https://claude.ai/',name:'sessionKey'});if(!session?.value)throw new Error('auth');
       context.sessionHash=await fingerprint(session.value);context.scope='claude:'+await fingerprint(context.hint+'/'+context.sessionHash);
       try{await prepareClaude(id,context);}catch{}
+    }
+    if(provider==='grok'){
+      context.sessionHash=await grokSession();if(!context.sessionHash)throw new Error('auth');
+      context.scope='grok:'+await fingerprint(context.hint+'/'+context.sessionHash);
     }
   }catch(e){
     if(bindingEpoch.get(id)!==epoch)return;
@@ -182,7 +188,7 @@ async function handle(message,sender){
     case 'diagnostics':{
       if(!own)return {ok:false};const view=tabView(id),snapshot=view.snapshot;
       return {ok:true,report:{version:C.VERSION,provider:view.provider||null,error:view.error||null,checking:view.checking===true,
-        diagnostics:view.diagnostics||snapshot?.diagnostics||null,usage:snapshot?.usage?{source:snapshot.usage.source||null,windows:snapshot.usage.windows.map(w=>({seconds:w.seconds,used:w.used,resetAt:w.resetAt,main:w.main})),fetchedAt:snapshot.usage.fetchedAt,unavailable:snapshot.usage.unavailable||null}:null}};
+        diagnostics:view.diagnostics||snapshot?.diagnostics||null,usage:snapshot?.usage?{source:snapshot.usage.source||null,windows:snapshot.usage.windows.map(w=>({seconds:w.seconds,used:w.used,resetAt:w.resetAt,main:w.main,...(C.finite(w.remaining)?{remaining:w.remaining,total:w.total}:{})})),fetchedAt:snapshot.usage.fetchedAt,unavailable:snapshot.usage.unavailable||null}:null}};
     }
     case 'settings':{
       const next=message.value||{};
@@ -218,11 +224,12 @@ chrome.tabs.onUpdated.addListener((id,change,tab)=>{
 });
 chrome.tabs.onRemoved.addListener(id=>{bindingEpoch.delete(id);tabs.delete(id);void ready.then(publish).catch(()=>{});});
 chrome.cookies.onChanged.addListener(info=>{
-  if(info.cookie.name!=='sessionKey'||!/(^|\.)claude\.ai$/.test(info.cookie.domain.replace(/^\./,'')))return;
+  const domain=info.cookie.domain.replace(/^\./,''),provider=info.cookie.name==='sessionKey'&&domain==='claude.ai'?'claude':['sso','sso-rw'].includes(info.cookie.name)&&domain==='grok.com'?'grok':null;
+  if(!provider)return;
   if(info.removed&&info.cause==='overwrite')return;
   void ready.then(async()=>{
-    for(const [id,t] of tabs)if(t.provider==='claude'){tabs.set(id,{provider:'claude',dark:t.dark});await paintTab(id);}
-    await publish();const open=await chrome.tabs.query({url:'https://claude.ai/*'});await Promise.allSettled(open.map(t=>refreshTab(t.id,true)));
+    for(const [id,t] of tabs)if(t.provider===provider){tabs.set(id,{provider,dark:t.dark});await paintTab(id);}
+    await publish();const open=await chrome.tabs.query({url:provider==='claude'?'https://claude.ai/*':'https://grok.com/*'});await Promise.allSettled(open.map(t=>refreshTab(t.id,true)));
   }).catch(()=>{});
 });
 chrome.alarms.onAlarm.addListener(alarm=>void ready.then(async()=>{

@@ -12,7 +12,7 @@ const settle=async()=>{for(let i=0;i<20;i++)await tick();};
 function event(){const listeners=[];return {listeners,addListener:f=>listeners.push(f)};}
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 function fixture(provider,time){
-  const used={chatgpt:38,claude:24,gemini:63}[provider];
+  const used={chatgpt:38,claude:24,gemini:63,grok:50}[provider];
   return {key:provider+'-account',plan:'pro',label:provider+' · test',errors:[],usage:Core.parseUsage({rate_limit:{primary_window:{used_percent:used,limit_window_seconds:18000,reset_after_seconds:3600},secondary_window:{used_percent:used+1,limit_window_seconds:604800,reset_after_seconds:6000}}},time)};
 }
 async function worker({storage={},session={},time=Date.now(),load=fixture,active=1,open}={}){
@@ -28,15 +28,15 @@ async function worker({storage={},session={},time=Date.now(),load=fixture,active
     windows:{onFocusChanged:event(),WINDOW_ID_NONE:-1},
     cookies:{get:async()=>cookie?{value:cookie}:undefined,onChanged:event()},
     tabs:{get:async id=>{if(!tabData.has(id))throw new Error('closed');return structuredClone(tabData.get(id));},
-      query:async q=>q.active?[tabData.get(selected)].filter(Boolean):[...tabData.values()].filter(t=>Core.providerForURL(t.url)&&(typeof q.url!=='string'||t.url.startsWith('https://claude.ai/'))),create:async()=>{},onActivated:event(),onUpdated:event(),onRemoved:event()},
+      query:async q=>q.active?[tabData.get(selected)].filter(Boolean):[...tabData.values()].filter(t=>Core.providerForURL(t.url)&&(typeof q.url!=='string'||t.url.startsWith(q.url.replace('*','')))),create:async()=>{},onActivated:event(),onUpdated:event(),onRemoved:event()},
     scripting:{executeScript:async spec=>{
       scriptingCalls.push(spec.target.tabId);
       if(spec.files)return [];
       const t=tabData.get(spec.target.tabId),provider=Core.providerForURL(t?.url);if(!provider)throw new Error('context');
-      const hint={chatgpt:'a',claude:'b',gemini:t.url.includes('/u/1')?'d':'c'}[provider].repeat(24);
+      const hint={chatgpt:'a',claude:'b',gemini:t.url.includes('/u/1')?'d':'c',grok:'e'}[provider].repeat(24);
       return [{frameId:0,result:{provider,hint,scope:provider==='chatgpt'?'chatgpt':provider+':'+hint,org:provider==='claude'?'org-chat-001':null,accountIndex:t.url.includes('/u/1')?1:0}}];
     }} };
-  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,chrome,fingerprint,structuredClone,URL,Date:Clock,prepareClaude:async()=>{},readClaudeStream:async()=>null,loadProvider:async ctx=>{requests.push({provider:ctx.provider,scope:ctx.scope});return load(ctx.provider,currentTime,ctx);}});
+  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,chrome,fingerprint,structuredClone,URL,Date:Clock,grokSession:async()=>cookie?fingerprint('grok/'+cookie):null,prepareClaude:async()=>{},readClaudeStream:async()=>null,loadProvider:async ctx=>{requests.push({provider:ctx.provider,scope:ctx.scope});return load(ctx.provider,currentTime,ctx);}});
   new vm.Script(source,{filename:'background.js'}).runInContext(context);await settle();
   const message=(body,id)=>new Promise(resolve=>chrome.runtime.onMessage.listeners[0](body,id?{id:'test-extension',tab:tabData.get(id),url:tabData.get(id)?.url}:{id:'test-extension'},resolve));
   const alarm=async name=>{chrome.alarms.onAlarm.listeners[0]({name});await settle();};
@@ -44,6 +44,7 @@ async function worker({storage={},session={},time=Date.now(),load=fixture,active
     activate:async id=>{selected=id;chrome.tabs.onActivated.listeners[0]({tabId:id});await settle();},
     navigate:async(id,url)=>{Object.assign(tabData.get(id),{url});chrome.tabs.onUpdated.listeners[0](id,{url,status:'loading'},tabData.get(id));await settle();chrome.tabs.onUpdated.listeners[0](id,{status:'complete'},tabData.get(id));await settle();},
     spa:async(id,url)=>{Object.assign(tabData.get(id),{url});chrome.tabs.onUpdated.listeners[0](id,{url},tabData.get(id));await settle();},
+    changeGrokSession:async value=>{cookie=value;chrome.cookies.onChanged.listeners[0]({cookie:{name:'sso',domain:'.grok.com'},removed:!value,cause:'explicit'});await settle();},
     changeSession:async value=>{cookie=value;chrome.cookies.onChanged.listeners[0]({cookie:{name:'sessionKey',domain:'.claude.ai'},removed:!value,cause:'explicit'});await settle();}};
 }
 test('each provider has its own values; same-account tabs share one request; unsupported badge is empty',async()=>{
@@ -89,4 +90,11 @@ test('upgrade clears old Gemini transport cooldown while preserving a captured d
  w.storage.providerBuild='0.3.2';w.storage.providerStates[scope].providerState={jsonRetryAt:Date.now()+1800000,domRetryAt:Date.now()+600000,geminiQuery:{signature:'retained-signature'}};
  const next=await worker({storage:w.storage,session:w.session});
  assert.equal(next.storage.providerStates[scope].providerState.jsonRetryAt,0);assert.equal(next.storage.providerStates[scope].providerState.domRetryAt,0);assert.equal(next.storage.providerStates[scope].providerState.geminiQuery.signature,'retained-signature');
+});
+
+test('Grok tabs share updates; logout hides both badges and a new login gets a new cache',async()=>{
+ const w=await worker({open:[{id:1,url:'https://grok.com/'},{id:2,url:'https://grok.com/c/other'}]});
+ assert.equal(w.requests.length,1);assert.equal(w.storage.tabViews[1].provider,'grok');assert.equal(w.badges.get(1),w.badges.get(2));assert.match(w.badges.get(1),/^(50|49)%$/);
+ const old=w.storage.tabViews[1].scope;await w.changeGrokSession('');assert.equal(w.storage.tabViews[1].snapshot,null);assert.equal(w.storage.tabViews[2].snapshot,null);assert.equal(w.badges.get(1),'!');
+ await w.changeGrokSession('secret-grok-b');assert.notEqual(w.storage.tabViews[1].scope,old);assert.equal(w.requests.length,2);assert(!JSON.stringify(w.storage).includes('secret-grok-b'));
 });
