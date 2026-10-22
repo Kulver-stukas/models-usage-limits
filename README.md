@@ -4,6 +4,14 @@ A Chrome Manifest V3 extension that displays usage limits from the signed-in web
 
 The toolbar badge follows the active tab. An optional floating widget shows usage and reset times inside each supported service. Other sites have no percentage badge.
 
+## Screenshots
+
+Light and dark views of the popup and the widget's three display levels. Both images are 1280 × 800 and use example data captured with version 0.3.5; actual quotas depend on the provider and plan.
+
+![Usage Meter in light mode](docs/screenshots/usage-meter-light.png)
+
+![Usage Meter in dark mode](docs/screenshots/usage-meter-dark.png)
+
 ## Features
 
 - Session and weekly usage windows, when reported by the provider. Other window lengths keep their actual duration.
