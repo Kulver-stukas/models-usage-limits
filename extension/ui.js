@@ -36,6 +36,8 @@
   .settings .body{padding:16px}.setting{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:12px}.setting+.setting{margin-top:18px}.setting-note{font-size:10px;line-height:1.5;color:var(--muted);margin-top:10px}
   .segments{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}.segments button{border:0;background:none;padding:5px 9px;font-size:11px;color:var(--muted)}.segments button.selected{background:#269b78;color:#fff}
   .switch{appearance:none;width:30px;height:18px;background:var(--track);border:1px solid var(--line);border-radius:12px;position:relative;margin:0;cursor:pointer;flex-shrink:0}.switch:before{content:"";position:absolute;width:12px;height:12px;background:#fff;top:2px;left:2px;border-radius:50%;box-shadow:0 1px 3px #0002}.switch:checked{background:#269b78;border-color:#269b78}.switch:checked:before{left:14px}
+  .settings-tabs{display:flex;border-bottom:1px solid var(--line);padding:0 16px;gap:16px}.settings-tabs button{border:0;border-bottom:2px solid transparent;background:none;padding:9px 0;color:var(--muted);font-size:11px}.settings-tabs button.selected{border-bottom-color:#269b78;color:var(--fg)}
+  input:disabled{opacity:.45;cursor:default}.quota-choice{padding:10px 0;border-bottom:1px solid var(--line)}.quota-choice .setting{font-size:11px}.quota-choice .setting-note{margin-top:5px}.quota-list{margin-top:12px}.marker-context{font-weight:600;margin-bottom:12px}.marker-context .setting-note{font-weight:400;margin-top:3px}
   .text-button{background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:5px 8px;font-size:11px}.details{border-top:1px solid var(--line);margin-top:18px;padding-top:12px;color:var(--muted);font-size:10px;line-height:1.6}.detail-row{display:flex;justify-content:space-between;gap:10px}.detail-row+.detail-row{margin-top:5px}.settings-foot{border-top:1px solid var(--line);padding:11px 16px;display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--muted)}.link{background:none;border:0;padding:0;font-size:11px;color:var(--muted);text-decoration:underline}
   `;
   const roots=new WeakMap();
@@ -134,6 +136,27 @@
     if(view?.retryAt>Date.now())line('Next automatic retry',new Date(view.retryAt).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
     body.append(details);card.append(body);const footer=el('footer','settings-foot');footer.append(el('span','','Usage Meter · '+C.VERSION));if(view?.provider)footer.append(textButton('Copy diagnostics','diagnostics','link'),textButton('Open Usage','open','link'));card.append(footer);
   }
+  function renderMarkers(card,view){
+    const body=el('div','body'),provider=C.providers[view?.provider],config=view?.resetMarkers;
+    const context=el('div','marker-context',provider?provider.name+(view.snapshot?.plan?' · '+C.planLabel(view.snapshot.plan):''):'No active provider');
+    context.append(el('div','setting-note',view.snapshot?.label||'Open a supported chat tab and verify its account.'));body.append(context);
+    const choices=config?.quotas||[],available=Boolean(config?.key&&choices.some(q=>q.eligible));
+    const label=el('label','setting');label.append(el('span','','Green dot on reset'));
+    const toggle=el('input','switch');toggle.type='checkbox';toggle.dataset.action='toggle-reset-markers';toggle.setAttribute('aria-label','Green dot on reset');toggle.checked=config?.enabled===true;toggle.disabled=!available;label.append(toggle);body.append(label);
+    body.append(el('div','setting-note','Off by default. Applies only to this provider account and plan. Select which quotas to watch below.'));
+    body.append(el('div','setting-note','A green dot appears on background tabs after a selected quota resets, if its previous usage was at least 90%. Opening the account clears the dot. Titles are never changed.'));
+    if(!choices.length)body.append(el('div','status','No quotas with a verifiable reset are currently reported for this account. Refresh usage or check another plan.'));
+    const list=el('div','quota-list');
+    for(const q of choices){
+      const row=el('div','quota-choice');row.dataset.key=q.id;const choice=el('label','setting');choice.append(el('span','',q.label));
+      const input=el('input');input.type='checkbox';input.dataset.action='reset-quota';input.dataset.quota=q.id;input.setAttribute('aria-label',q.label);input.checked=q.selected===true;input.disabled=!config?.enabled||!q.eligible;choice.append(input);row.append(choice);
+      if(q.reason)row.append(el('div','setting-note',q.reason));list.append(row);
+    }
+    body.append(list);
+    if(config?.enabled&&!choices.some(q=>q.selected&&q.eligible))body.append(el('div','setting-note','Select at least one available quota to start watching.'));
+    body.append(el('div','setting-note','Sleeping or unloaded tabs may not show the dot until the page resumes. No system notifications or additional permissions are used.'));
+    card.append(body);const footer=el('footer','settings-foot');footer.append(el('span','','Usage Meter · '+C.VERSION));card.append(footer);
+  }
   // Retain nodes, focus, scroll and progress transitions on ordinary updates.
   function patch(old,fresh){
     if(old.nodeType!==fresh.nodeType || old.nodeName!==fresh.nodeName || (old.nodeType===1 && (old.dataset?.key || '')!==(fresh.dataset?.key || ''))){old.replaceWith(fresh);return fresh;}
@@ -145,14 +168,16 @@
     while(old.childNodes.length>kids.length)old.lastChild.remove();return old;
   }
   function bind(root){
-    let state=roots.get(root);if(state)return state;state={actions:{},settings:{},busy:false};roots.set(root,state);
+    let state=roots.get(root);if(state)return state;state={actions:{},settings:{},view:{},busy:false};roots.set(root,state);
     root.addEventListener('click',async event=>{
       const target=event.target.closest?.('[data-action]');if(!target || target.disabled)return;const action=target.dataset.action,a=state.actions;
-      if(action==='toggle-widget')return;
+      if(['toggle-widget','toggle-reset-markers','reset-quota'].includes(action))return;
       if(action==='refresh'){
         if(state.busy)return;state.busy=true;target.disabled=true;
         try{await a.refresh?.(target);}finally{state.busy=false;const current=root.querySelector('[data-action="refresh"]');if(current)current.disabled=false;}
       }else if(action==='settings')a.navigate?.('settings');
+      else if(action==='settings-display')a.navigate?.('settings');
+      else if(action==='settings-markers')a.navigate?.('reset-markers');
       else if(action==='back')a.navigate?.('overview');
       else if(action==='collapse')a.settings?.({widgetLevel:((state.settings.widgetLevel ?? (state.settings.collapsed?2:0))+1)%3});
       else if(action==='hide')a.settings?.({widget:false});
@@ -161,13 +186,23 @@
       else if(action==='open')a.open?.();
       else if(action==='diagnostics')await a.diagnostics?.(target);
     });
-    root.addEventListener('change',event=>{if(event.target.dataset.action==='toggle-widget')state.actions.settings?.({widget:event.target.checked});});return state;
+    root.addEventListener('change',event=>{
+      const input=event.target,action=input.dataset.action;
+      if(action==='toggle-widget')state.actions.settings?.({widget:input.checked});
+      if(['toggle-reset-markers','reset-quota'].includes(action)){
+        const config=state.view.resetMarkers;if(!config?.key||input.disabled)return;
+        const selected=new Set(config.quotas.filter(q=>q.selected).map(q=>q.id));
+        if(action==='reset-quota'){if(input.checked)selected.add(input.dataset.quota);else selected.delete(input.dataset.quota);}
+        state.actions.markers?.({key:config.key,enabled:action==='toggle-reset-markers'?input.checked:config.enabled,quotas:[...selected]});
+      }
+    });return state;
   }
   function render(root,view,settings,actions,{widget=false,dark=false,screen='overview'}={}){
-    const state=bind(root);state.actions=actions;state.settings=settings;
+    const state=bind(root);state.actions=actions;state.settings=settings;state.view=view;
+    const isSettings=!widget&&['settings','reset-markers'].includes(screen);
     const provider=C.providers[view?.provider],titleText=provider?provider.name+' Usage':'Usage';
     const level=widget?(settings.widgetLevel ?? (settings.collapsed?2:0)):0,strip=widget&&level===2;
-    const card=el('section',`meter card${dark?' dark':''}${widget?' widget':''}${strip?' strip':''}${screen==='settings'?' settings':''}`);card.setAttribute('aria-label',widget?titleText+' widget':screen==='settings'?'Usage settings':titleText);card.title=strip?titleText:'';
+    const card=el('section',`meter card${dark?' dark':''}${widget?' widget':''}${strip?' strip':''}${isSettings?' settings':''}`);card.setAttribute('aria-label',widget?titleText+' widget':isSettings?'Usage settings':titleText);card.title=strip?titleText:'';
     if(widget)Object.assign(card.style,{width:'100%',maxHeight:'calc(100vh - 24px)',overflowY:'auto'});
     const header=el('header','head'+(widget?' drag':''));header.dataset.key='header';const snapshot=view?.snapshot,windows=C.displayWindows(snapshot?.usage);
     if(widget){
@@ -182,13 +217,16 @@
         if(!summary.childNodes.length)summary.append(el('span','empty',view?.error?'Update unavailable':'Checking…'));summary.title='Used / left';header.append(summary);
       }else header.append(el('span','brand',titleText));
       header.append(button(strip?'up':'down',strip?'Expand widget':level===0?'Show plan limits only':'Collapse to strip','collapse'),button('close','Hide widget','hide'));
-    }else if(screen==='settings')header.append(button('back','Back to usage','back'),el('span','brand','Settings'));
+    }else if(isSettings)header.append(button('back','Back to usage','back'),el('span','brand','Settings'));
     else{
       const title=el('span','brand'),logo=svg('logo');logo.classList.add('logo');title.append(logo,document.createTextNode(titleText));
       const refresh=button('refresh','Refresh usage','refresh');refresh.disabled=state.busy||!provider;header.append(title,button('gear','Settings','settings'),refresh);
     }
     card.append(header);
-    if(!widget&&screen==='settings')renderSettings(card,view,settings);
+    if(isSettings){const nav=el('nav','settings-tabs');nav.setAttribute('aria-label','Settings sections');
+      for(const [target,label] of [['settings','Display'],['reset-markers','Reset markers']]){const b=textButton(label,target==='settings'?'settings-display':'settings-markers',screen===target?'selected':'');b.setAttribute('aria-pressed',String(screen===target));nav.append(b);}card.append(nav);}
+    if(isSettings&&screen==='reset-markers')renderMarkers(card,view);
+    else if(isSettings)renderSettings(card,view,settings);
     else if(!strip){
       const body=el('div','body');body.dataset.key='body';addStatus(body,view);addWindows(body,windows,widget);
       if(snapshot&&!windows.length&&!C.usageHealth(view).message)body.append(el('div','empty',snapshot.usage?.unavailable||'No plan percentage reported.'));if(widget&&level===0)addFeatures(body,view);card.append(body);

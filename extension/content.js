@@ -7,15 +7,18 @@
   let host=null,shadow=null,view={},settings={mode:'left',widget:false,widgetLevel:0},revision=-1,tabId=null;
   let disposed=false,lastCookie=null,lastDark=null,dragging=false,lastWake=0,settingsChanged=false;
   let wasGenerating=false,contextBusy=false,lastHeartbeat=0;
+  const favicon=globalThis.UsageFavicon?.create();
   const timers=[];
   const supported=()=>Boolean(LimitsCore.providerForURL(location.href));
   function destroy(){
     disposed=true;timers.forEach(clearInterval);themeObserver.disconnect();
     try{chrome.storage.onChanged.removeListener(onStorage);}catch{}
     document.removeEventListener('visibilitychange',onVisible);
+    window.removeEventListener('focus',onVisible);
     window.removeEventListener('message',onQuota);
     window.removeEventListener('resize',render);window.removeEventListener('pagehide',onPageHide);
     host?.remove();host=null;
+    favicon?.destroy();
     if(globalThis[slot]?.version===version)delete globalThis[slot];
   }
   async function send(message){
@@ -61,6 +64,7 @@
   }
   function render(){
     if(disposed||dragging)return;
+    favicon?.set(supported()&&view.resetMarker===true);
     if(!settings.widget||!supported()){host?.remove();host=null;shadow=null;return;}
     if(!host||!host.isConnected) {
       host=document.createElement('div');host.id='usage-meter-widget';
@@ -104,6 +108,7 @@
     lastHeartbeat=Date.now();window.postMessage({usageMeter:'claude-observer-alive'},location.origin);
   }
   function onVisible(){if(document.visibilityState==='visible'){
+    if(document.hasFocus()&&view.resetMarker)void send({type:'marker-seen'});
     keepObserver();
     void context();void theme();
     if(Date.now()-lastWake>60000){lastWake=Date.now();void send({type:'refresh'});}
@@ -118,6 +123,7 @@
   themeObserver.observe(document.documentElement,{attributes:true,attributeFilter:['class','style','data-theme','data-color-mode']});
   chrome.storage.onChanged.addListener(onStorage);
   document.addEventListener('visibilitychange',onVisible);window.addEventListener('resize',render);window.addEventListener('pagehide',onPageHide);
+  window.addEventListener('focus',onVisible);
   window.addEventListener('message',onQuota);
   globalThis[slot]={version,destroy};
   chrome.storage.local.get(['settings']).then(data=>{

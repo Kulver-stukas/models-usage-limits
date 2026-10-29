@@ -22,6 +22,7 @@ Light and dark views of the popup and the widget's three display levels. Both im
 - ChatGPT feature counts, reset credits and available model information when returned by the service.
 - Separate caches for providers and verified account contexts. Multiple tabs for the same context share refresh work.
 - Manual refresh, automatic polling, request backoff and diagnostics without session credentials or chat content.
+- Optional green favicon dots after confirmed resets of selected quota windows. Disabled by default; configured from the active provider account's settings.
 
 ## Install
 
@@ -50,6 +51,18 @@ Some ChatGPT feature responses report only a remaining count, without the total 
 Integer warning thresholds are rounded down in used units. With a reference of 5, 2 remaining is amber and 1 or 0 is red. Zero is always red. A newly seen nonzero count stays neutral until there is evidence of consumption relative to an observed reference. Switching plans starts a new reference.
 
 Version 0.3.6 adds Grok Free counts and experimental paid-pool support. The 0.3.5 store package remains separate and has no Grok permission.
+
+### Reset markers (0.3.7)
+
+Open a supported provider tab, then choose **Settings → Reset markers**. Enable **Green dot on reset** and select the quota windows to watch. Settings are separate for each verified provider account and plan; five-hour, weekly and other reported windows can be selected independently. Nothing is enabled automatically.
+
+![Reset marker settings in light and dark themes, with example account data](docs/screenshots/reset-marker-settings.png)
+
+A window is watched after a fresh reading reaches **90% used**. A green dot appears on the background account's favicons only after a fresh provider response confirms a later window and usage below 90%, after the previous deadline. Passing a countdown, an error, a missing window or a stale zero never creates a dot. Viewing any tab for the account acknowledges its dots. The page title and toolbar percentages are unchanged. Events and acknowledgement survive service-worker restarts.
+
+Claude chat-event-only readings, Gemini DOM estimates, Grok Free's missing reset timestamp and ChatGPT count-only feature estimates cannot confirm a background reset. Their quota rows are disabled with an explanation. Eligibility follows the actual reported data, not an assumed plan name. Frozen or discarded tabs may delay favicon changes until their page resumes; their state remains local. No system notifications or new permissions are used.
+
+The extension overlays the current page icon where it can read it. If the icon cannot be read because of cross-origin restrictions, the marker falls back to a dot on a transparent favicon. A provider's CSP can prevent custom icons. Provider icon changes are observed and the underlying icon is restored when the marker is cleared or the content controller is removed.
 
 ## Provider behaviour
 
@@ -110,6 +123,7 @@ node tests/gemini-network.browser.cjs
 node tests/gemini-discovery.browser.cjs
 node tests/gemini-redirect.browser.cjs
 node tests/grok.browser.cjs
+node tests/reset-markers.browser.cjs
 ```
 
 `METER_PLAYWRIGHT_MODULE` and `METER_CHROMIUM_PATH` can point to existing installations. These are test dependencies only. The tests use synthetic accounts and controlled HTTP/stream responses; they do not require a live login or spend model usage.
@@ -121,4 +135,4 @@ Before sharing a problem report, use **Settings → Copy diagnostics** and descr
 The implementation is independent. Grok endpoint and field mappings were investigated using Joshua Wang’s Grok Usage Watch source and changelog; its source has not been copied into this package. Open-source protocol investigations, including CodexBar's Gemini web adapter and Claude quota-event trackers, informed the provider adapters. The widget's visual references were the usage trackers discussed during development; their donation controls and theme presets are not included.
 
 
-Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5` for the immutable pre-Grok store build. The current package defaults to 0.3.6.
+Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5` or `--version 0.3.6` for the preserved earlier builds. The current package defaults to 0.3.7.

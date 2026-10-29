@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import fs from 'node:fs/promises';
 import {Engine} from '../extension/engine.mjs';
 import {fingerprint} from '../extension/api.mjs';
+import {ResetMarkers,markerKey} from '../extension/reset-markers.mjs';
 import '../extension/shared.js';
 const Core=globalThis.LimitsCore;
 const source=(await fs.readFile(new URL('../extension/background.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
@@ -36,7 +37,7 @@ async function worker({storage={},session={},time=Date.now(),load=fixture,active
       const hint={chatgpt:'a',claude:'b',gemini:t.url.includes('/u/1')?'d':'c',grok:'e'}[provider].repeat(24);
       return [{frameId:0,result:{provider,hint,scope:provider==='chatgpt'?'chatgpt':provider+':'+hint,org:provider==='claude'?'org-chat-001':null,accountIndex:t.url.includes('/u/1')?1:0}}];
     }} };
-  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,chrome,fingerprint,structuredClone,URL,Date:Clock,grokSession:async()=>cookie?fingerprint('grok/'+cookie):null,prepareClaude:async()=>{},readClaudeStream:async()=>null,loadProvider:async ctx=>{requests.push({provider:ctx.provider,scope:ctx.scope});return load(ctx.provider,currentTime,ctx);}});
+  const context=vm.createContext({LimitsCore:Core,Engine:TestEngine,ResetMarkers,markerKey,chrome,fingerprint,structuredClone,URL,Date:Clock,grokSession:async()=>cookie?fingerprint('grok/'+cookie):null,prepareClaude:async()=>{},readClaudeStream:async()=>null,loadProvider:async ctx=>{requests.push({provider:ctx.provider,scope:ctx.scope});return load(ctx.provider,currentTime,ctx);}});
   new vm.Script(source,{filename:'background.js'}).runInContext(context);await settle();
   const message=(body,id)=>new Promise(resolve=>chrome.runtime.onMessage.listeners[0](body,id?{id:'test-extension',tab:tabData.get(id),url:tabData.get(id)?.url}:{id:'test-extension'},resolve));
   const alarm=async name=>{chrome.alarms.onAlarm.listeners[0]({name});await settle();};
@@ -97,4 +98,24 @@ test('Grok tabs share updates; logout hides both badges and a new login gets a n
  assert.equal(w.requests.length,1);assert.equal(w.storage.tabViews[1].provider,'grok');assert.equal(w.badges.get(1),w.badges.get(2));assert.match(w.badges.get(1),/^(50|49)%$/);
  const old=w.storage.tabViews[1].scope;await w.changeGrokSession('');assert.equal(w.storage.tabViews[1].snapshot,null);assert.equal(w.storage.tabViews[2].snapshot,null);assert.equal(w.badges.get(1),'!');
  await w.changeGrokSession('secret-grok-b');assert.notEqual(w.storage.tabViews[1].scope,old);assert.equal(w.requests.length,2);assert(!JSON.stringify(w.storage).includes('secret-grok-b'));
+});
+test('configured background reset marks same-account tabs once, survives worker restart, and clears on viewing',async()=>{
+ const at=Date.now(),deadline=at+120000;
+ const open=[{id:1,url:'https://chatgpt.com/'},{id:3,url:'https://example.com/'},{id:4,url:'https://gemini.google.com/app'},{id:6,url:'https://gemini.google.com/app/other'}];
+ const load=(p,t)=>{const b=fixture(p,t);if(p==='gemini'){b.usage.windows[0].used=t<deadline?95:3;b.usage.windows[0].resetAt=t<deadline?deadline:deadline+18000000;}return b;};
+ const w=await worker({time:at,open,load});assert(!w.storage.tabViews[4].resetMarker);
+ await w.activate(4);const key=w.storage.activeView.resetMarkers.key;
+ assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:['window:main:primary']})).ok,true);
+ assert(w.alarms.get('quota-reset'));await w.activate(3);w.advance(121000);await w.alarm('quota-reset');
+ assert(w.storage.tabViews[4].resetMarker);assert(w.storage.tabViews[6].resetMarker);assert(!w.storage.tabViews[1].resetMarker);assert.equal(w.badges.get(3),'');
+ const next=await worker({storage:w.storage,session:w.session,time:deadline+2000,open,load,active:3});
+ assert(next.storage.tabViews[4].resetMarker);await next.activate(6);
+ assert(!next.storage.tabViews[4].resetMarker);assert(!next.storage.tabViews[6].resetMarker);
+ next.advance(60000);await next.alarm('refresh');assert(!next.storage.tabViews[4].resetMarker);
+});
+test('marker settings cannot be forged by a page or applied after a provider switch',async()=>{
+ const w=await worker();await w.activate(4);const key=w.storage.activeView.resetMarkers.key;
+ assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:[]},4)).ok,false);
+ await w.activate(2);assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:[]})).ok,false);
+ assert(!w.storage.activeView.resetMarkers.enabled);
 });

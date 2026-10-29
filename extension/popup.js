@@ -6,6 +6,7 @@
     document.documentElement.classList.toggle('dark',dark);
     LimitsUI.render(app,view,settings,{
       refresh:()=>send({type:'refresh',force:true}),settings:value=>send({type:'settings',value}),
+      markers:value=>send({type:'reset-marker-settings',...value}),
       open:()=>send({type:'open'}),navigate:value=>{screen=value;render();},
       diagnostics:async button=>{
         const result=await send({type:'diagnostics'});if(!result?.ok)return;
