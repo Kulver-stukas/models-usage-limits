@@ -1,6 +1,6 @@
 /* Original implementation. This file is shared by the worker, popup and page. */
 (() => {
-  const VERSION = '0.3.6';
+  const VERSION = '0.3.7';
   const finite = x => typeof x === 'number' && Number.isFinite(x);
   const clamp = n => Math.min(100, Math.max(0, n));
   const plans = {team:'BUSINESS',business:'BUSINESS',free:'FREE',plus:'PLUS',pro:'PRO',go:'GO',enterprise:'ENTERPRISE',edu:'EDU'};

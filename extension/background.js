@@ -4,16 +4,25 @@ import {Engine} from './engine.mjs';
 import {fingerprint} from './api.mjs';
 import {loadProvider} from './providers.mjs';
 import {prepareClaude,readClaudeStream} from './claude-live.mjs';
+import {ResetMarkers,markerKey} from './reset-markers.mjs';
 const C=globalThis.LimitsCore;
 const patterns=['https://chatgpt.com/*','https://claude.ai/*','https://gemini.google.com/*','https://grok.com/*'];
 const defaults={mode:'left',widget:false,widgetLevel:0,position:null};
 const records=new Map(),tabs=new Map(),bindingEpoch=new Map();
 let settings={...defaults},states={},views={},revision=0,activeId=null,badgeIndex=Math.floor(Date.now()/30000),bindingToken=0,restored=false;
 let writes=Promise.resolve(),badgeWrites=Promise.resolve();
+let markers=new ResetMarkers(),browserFocused=true;
+function accountMarkerKey(scope){
+  const view=views[scope],record=records.get(scope);
+  return view?.snapshot&&!view.checking?markerKey(record?.context.provider,view.markerAccountKey,view.snapshot.plan):null;
+}
 function tabView(id){
   const tab=tabs.get(id);
   if(!tab)return {provider:null,snapshot:null,checking:false,unsupported:true};
-  return {provider:tab.provider,scope:tab.context?.scope,...(tab.error?{snapshot:null,checking:false,error:tab.error}:views[tab.context?.scope]||{snapshot:null,checking:true}),dark:tab.dark};
+  const scope=tab.context?.scope,view=tab.error?{snapshot:null,checking:false,error:tab.error}:views[scope]||{snapshot:null,checking:true};
+  const key=view.snapshot?accountMarkerKey(scope):null;
+  return {provider:tab.provider,scope,...view,dark:tab.dark,
+    resetMarkers:markers.describe(key,view,Date.now()),resetMarker:Boolean(key&&markers.pending(key,Date.now()))};
 }
 function paintTab(id){
   // Per-tab action state prevents a slow response from repainting another site.
@@ -39,10 +48,17 @@ function paintTab(id){
     }catch{} // A tab may close while a badge write is queued.
   });return badgeWrites;
 }
-function publish(){
+async function publish(){
+  const at=Date.now(),visible=browserFocused?accountMarkerKey(tabs.get(activeId)?.context?.scope):null;
+  for(const [scope,view] of Object.entries(views)){
+    const key=accountMarkerKey(scope);if(key)markers.update(key,view,at,key===visible);
+  }
+  const next=markers.nextReset(at),alarm=await chrome.alarms.get('quota-reset');
+  if(next&&(!alarm||Math.abs(alarm.scheduledTime-(next+1000))>1000))await chrome.alarms.create('quota-reset',{when:next+1000});
+  else if(!next&&alarm)await chrome.alarms.clear('quota-reset');
   const tabViews=Object.fromEntries([...tabs.keys()].map(id=>[id,{...tabView(id),revision:++revision}]));
   const activeView={...tabView(activeId),revision:++revision};
-  const data=structuredClone({providerStates:states,publicViews:views,tabViews,activeView,viewRevision:revision});
+  const data=structuredClone({providerStates:states,publicViews:views,tabViews,activeView,viewRevision:revision,resetMarkerState:markers.export()});
   const session=structuredClone({bindingsVersion:C.VERSION,tabBindings:Object.fromEntries(tabs)});
   writes=writes.catch(()=>{}).then(async()=>{
     await chrome.storage.local.set(data);
@@ -69,9 +85,12 @@ function getRecord(context){
     if(!check||check.error||check.hint!==t.context.hint||tabs.get(id)?.context?.scope!==context.scope)throw new Error('context');
     return result;
   },save:async(state,view)=>{
-    states[context.scope]=state;views[context.scope]={...view,revision:++revision};await renderAll();
+    states[context.scope]=state;views[context.scope]={...view,markerAccountKey:state.selected,revision:++revision};await renderAll();
   }});
   const e=record.engine;
+  // Migrate a cached 0.3.6 view once. Later publications use the account key
+  // saved atomically with that view, never a mutable in-flight selection.
+  if(views[context.scope]?.snapshot&&!views[context.scope].markerAccountKey)views[context.scope].markerAccountKey=e.selected;
   e.confirmed=Boolean(views[context.scope]?.snapshot&&e.accounts[e.selected]);e.error=views[context.scope]?.error||null;
   records.set(context.scope,record);return record;
 }
@@ -133,14 +152,16 @@ async function selectActive(){
 }
 async function injectOpenTabs(){
   const open=await chrome.tabs.query({url:patterns});
-  await Promise.allSettled(open.filter(t=>t.id).map(t=>chrome.scripting.executeScript({target:{tabId:t.id},files:['shared.js','ui.js','content.js']})));
+  await Promise.allSettled(open.filter(t=>t.id).map(t=>chrome.scripting.executeScript({target:{tabId:t.id},files:['shared.js','ui.js','favicon.js','content.js']})));
 }
 async function refreshOpen(){
   const open=await chrome.tabs.query({url:patterns});await Promise.allSettled(open.map(bindTab));
   await Promise.allSettled([...records.values()].filter(r=>[...tabs.values()].some(t=>t.context?.scope===r.context.scope)).map(r=>r.engine.refresh()));
 }
 const ready=(async()=>{
-  const saved=await chrome.storage.local.get(['settings','providerStates','publicViews','engine','publicView','viewRevision','providerBuild']);
+  const saved=await chrome.storage.local.get(['settings','providerStates','publicViews','engine','publicView','viewRevision','providerBuild','resetMarkerState']);
+  markers=new ResetMarkers(saved.resetMarkerState);
+  if(chrome.windows.getLastFocused)browserFocused=(await chrome.windows.getLastFocused()).focused===true;
   settings={...defaults,...saved.settings};revision=saved.viewRevision||0;
   if(!Number.isInteger(saved.settings?.widgetLevel))settings.widgetLevel=saved.settings?.collapsed?2:0;delete settings.collapsed;
   states=saved.providerStates||{};views=saved.publicViews||{};
@@ -198,6 +219,20 @@ async function handle(message,sender){
       if(next.position&&Number.isFinite(next.position.x)&&Number.isFinite(next.position.y))settings.position={x:next.position.x,y:next.position.y};
       await chrome.storage.local.set({settings:structuredClone(settings)});await renderAll();if(next.widget===true)await injectOpenTabs();return {ok:true};
     }
+    case 'reset-marker-settings':{
+      if(!own)return {ok:false};
+      // Bind the popup action to the account it actually displayed. A tab or
+      // account switch must not apply settings to a different provider/seat.
+      const view=tabView(id),key=view.resetMarkers?.key;
+      if(!key||key!==message.key||typeof message.enabled!=='boolean'||!Array.isArray(message.quotas)||message.quotas.length>100)return {ok:false};
+      markers.configure(key,message.enabled,message.quotas,view,Date.now());await renderAll();
+      await injectOpenTabs();return {ok:true};
+    }
+    case 'marker-seen':{
+      if(!page||!browserFocused||id!==activeId)return {ok:false};
+      const key=accountMarkerKey(tabs.get(id)?.context?.scope);if(key)markers.acknowledge(key);
+      await publish();return {ok:true};
+    }
     case 'open':{
       const provider=tabView(id).provider;
       if(own&&provider){let url=C.providers[provider].usage;const index=tabs.get(id)?.context?.accountIndex;
@@ -210,7 +245,10 @@ async function handle(message,sender){
 }
 chrome.runtime.onMessage.addListener((message,sender,respond)=>{handle(message,sender).then(respond).catch(()=>respond({ok:false,error:'Extension operation failed'}));return true;});
 chrome.tabs.onActivated.addListener(()=>void ready.then(selectActive).catch(()=>{}));
-chrome.windows.onFocusChanged.addListener(id=>{if(id!==chrome.windows.WINDOW_ID_NONE)void ready.then(selectActive).catch(()=>{});});
+chrome.windows.onFocusChanged.addListener(id=>{
+  browserFocused=id!==chrome.windows.WINDOW_ID_NONE;
+  void ready.then(browserFocused?selectActive:publish).catch(()=>{});
+});
 chrome.tabs.onUpdated.addListener((id,change,tab)=>{
   if(!change.url&&change.status!=='complete'&&change.status!=='loading')return;
   void ready.then(async()=>{
@@ -234,6 +272,7 @@ chrome.cookies.onChanged.addListener(info=>{
 });
 chrome.alarms.onAlarm.addListener(alarm=>void ready.then(async()=>{
   if(alarm.name==='refresh')await refreshOpen();
+  if(alarm.name==='quota-reset')await refreshOpen();
   if(alarm.name==='badge'){
     badgeIndex=Math.floor(Date.now()/30000);await Promise.all([...tabs.keys()].map(paintTab));
     const due=[...records.values()].filter(r=>r.engine.view().snapshot?.usage?.windows?.some(w=>w.main&&w.resetAt&&w.resetAt<=Date.now()));

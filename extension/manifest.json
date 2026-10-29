@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Usage Meter — ChatGPT, Claude, Gemini, Grok",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "minimum_chrome_version": "120",
   "description": "Track usage limits and remaining quotas for ChatGPT, Claude, Gemini and Grok. Toolbar badge and optional compact widget.",
   "permissions": [
@@ -67,6 +67,7 @@
       "js": [
         "shared.js",
         "ui.js",
+        "favicon.js",
         "content.js"
       ],
       "run_at": "document_idle"
