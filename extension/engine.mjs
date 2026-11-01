@@ -77,11 +77,15 @@ export class Engine {
         // Count-only feature endpoints do not report a total. Keep a local
         // colour reference, never a claimed provider allowance or percentage.
         // A verified account key and plan isolate each observed high-water mark.
-        const samePlan=old.plan===bundle.plan,featureReferences=samePlan?{...old.featureReferences}:{};
+        // Missing plan metadata in a fallback/partial response is not a plan
+        // change. Keep the last known plan only for this verified account key.
+        const reportedPlan=typeof bundle.plan==='string'&&bundle.plan.trim()?bundle.plan:null;
+        const plan=reportedPlan||old.plan||null;
+        const samePlan=(old.plan||null)===plan,featureReferences=samePlan?{...old.featureReferences}:{};
         for(const f of [...(samePlan?old.init?.features||[]:[]),...(bundle.init?.features||[])]){
           if(Number.isFinite(f.remaining)&&f.remaining>=0)featureReferences[f.id]=Math.max(featureReferences[f.id]||0,f.remaining);
         }
-        this.accounts[bundle.key]={...old,label:bundle.label,plan:bundle.plan,diagnostics:bundle.diagnostics||null,
+        this.accounts[bundle.key]={...old,label:!reportedPlan&&old.plan&&old.label?old.label:bundle.label,plan,diagnostics:bundle.diagnostics||null,
           ...(bundle.usage?{usage:bundle.usage}:{}),...(bundle.init?{init:bundle.init}:{}),
           featureReferences,errors,verifiedAt:this.now()};
         const keys=Object.keys(this.accounts).filter(k=>k!==this.selected).sort((a,b)=>(this.accounts[a].verifiedAt || 0)-(this.accounts[b].verifiedAt || 0));

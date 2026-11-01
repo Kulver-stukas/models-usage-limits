@@ -141,11 +141,11 @@
     const context=el('div','marker-context',provider?provider.name+(view.snapshot?.plan?' · '+C.planLabel(view.snapshot.plan):''):'No active provider');
     context.append(el('div','setting-note',view.snapshot?.label||'Open a supported chat tab and verify its account.'));body.append(context);
     const choices=config?.quotas||[],available=Boolean(config?.key&&choices.some(q=>q.eligible));
-    const label=el('label','setting');label.append(el('span','','Green dot on reset'));
-    const toggle=el('input','switch');toggle.type='checkbox';toggle.dataset.action='toggle-reset-markers';toggle.setAttribute('aria-label','Green dot on reset');toggle.checked=config?.enabled===true;toggle.disabled=!available;label.append(toggle);body.append(label);
+    const label=el('label','setting');label.append(el('span','','Quota status dots'));
+    const toggle=el('input','switch');toggle.type='checkbox';toggle.dataset.action='toggle-reset-markers';toggle.setAttribute('aria-label','Quota status dots');toggle.checked=config?.enabled===true;toggle.disabled=!available;label.append(toggle);body.append(label);
     body.append(el('div','setting-note','Off by default. Applies only to this provider account and plan. Select which quotas to watch below.'));
-    body.append(el('div','setting-note','A green dot appears on background tabs after a selected quota resets, if its previous usage was at least 90%. Opening the account clears the dot. Titles are never changed.'));
-    if(!choices.length)body.append(el('div','status','No quotas with a verifiable reset are currently reported for this account. Refresh usage or check another plan.'));
+    body.append(el('div','setting-note','A red dot means a selected quota is in the widget’s red zone. It turns bright green when a fresh reading leaves red. Red takes priority if another selected quota is still critical. Returning to the account clears green dots; red stays until recovery. Titles are never changed.'));
+    if(!choices.length)body.append(el('div','status','No numeric quotas are currently reported for this account. Refresh usage or wait for the next provider reading.'));
     const list=el('div','quota-list');
     for(const q of choices){
       const row=el('div','quota-choice');row.dataset.key=q.id;const choice=el('label','setting');choice.append(el('span','',q.label));

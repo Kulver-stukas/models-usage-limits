@@ -1,74 +1,81 @@
-// Local reset events. Passing a deadline alone is never proof of a reset.
-const finite=Number.isFinite,CRITICAL=90,MAX_AGE=10*60000;
+// Reuse widget tones. Only a fresh reading can change red into green.
+import './shared.js';
+const C=globalThis.LimitsCore,finite=Number.isFinite,MAX_AGE=10*60000;
 export function markerKey(provider,account,plan){
   return provider&&account?JSON.stringify([provider,account,plan||null]):null;
 }
-export function markerQuotas(view,now=Date.now()){
+export function markerQuotas(view){
   const snap=view?.snapshot,usage=snap?.usage;
   return [...(usage?.windows||[]).map(w=>{
-    const event=w.observation==='event'||(w.observation!=='rest'&&(usage.observation==='event'||usage.source?.includes('event')));
-    let reason=null;
-    if(event)reason='This plan reports usage only after a chat reply; background reset confirmation is unavailable.';
-    else if(w.resetFromText||usage.source==='Gemini Usage page')reason='Only an estimated reset time is available.';
-    else if(!finite(w.resetAt))reason='The provider does not report a reset timestamp.';
-    return {id:'window:'+w.id,label:w.label,seconds:w.seconds,used:w.used,resetAt:w.resetAt,
-      fetchedAt:usage.fetchedAt,eligible:!reason,reason};
-  }),...(snap?.init?.features||[]).map(f=>({id:'feature:'+f.id,label:f.label,eligible:false,
-    reason:'Only a remaining count and a reset estimate are reported; a quota reset cannot be verified.'}))];
+    const event=w.observation==='event'||(w.observation!=='rest'&&C.isLive(usage));
+    const eligible=finite(w.used)&&w.used>=0&&w.used<=100;
+    return {id:'window:'+w.id,label:w.label,seconds:w.seconds,source:'usage',
+      critical:C.usageTone(w.used)==='critical',resetAt:w.resetAt,fetchedAt:usage.fetchedAt,eligible,
+      reason:!eligible?'No numeric usage is reported.':event?'Updates after a normal chat reply; recovery is detected when a new usage event arrives.':null};
+  }),...(snap?.init?.features||[]).map(f=>({id:'feature:'+f.id,label:f.label,source:'features',
+    critical:C.countTone(f.remaining,snap.featureReferences?.[f.id])==='critical',
+    resetAt:f.resetAt,fetchedAt:snap.init.fetchedAt,eligible:finite(f.remaining)&&f.remaining>=0,
+    reason:'Uses the widget’s count colours and its highest observed remaining count. Zero is always red.'}))];
 }
 export class ResetMarkers{
-  constructor(saved={}){this.preferences=saved.preferences||{};this.records=saved.records||{};}
-  export(){return structuredClone({preferences:this.preferences,records:this.records});}
+  constructor(saved={}){
+    this.preferences=saved.preferences||{};this.records=saved.records||{};
+    // Preserve selected quotas and an armed/acknowledged observation on upgrade.
+    if(saved.schema!==2)for(const rows of Object.values(this.records))for(const r of Object.values(rows)){
+      r.red=finite(r.armed);r.resetAt=r.armed||null;
+      r.pending=Boolean(r.pending&&r.pending.until>Date.now());delete r.armed;
+    }
+  }
+  export(){return structuredClone({schema:2,preferences:this.preferences,records:this.records});}
   config(key){return this.preferences[key]||{enabled:false,quotas:[]};}
-  configure(key,enabled,ids,view,now){
+  identifyPlan(from,to){
+    // The worker calls this only when the same verified account first reports
+    // its plan. Never overwrite settings already configured for a known plan.
+    if(!from||!to||from===to||!Object.hasOwn(this.preferences,from)||Object.hasOwn(this.preferences,to))return;
+    this.preferences[to]=this.preferences[from];
+    if(this.records[from])this.records[to]=this.records[from];
+    delete this.preferences[from];delete this.records[from];
+  }
+  configure(key,enabled,ids,view){
     if(!key)return;
-    const allowed=new Set(markerQuotas(view,now).filter(q=>q.eligible).map(q=>q.id));
+    const allowed=new Set(markerQuotas(view).filter(q=>q.eligible).map(q=>q.id));
     const quotas=[...new Set(ids)].filter(id=>allowed.has(id));
     this.preferences[key]={enabled:enabled===true,quotas};
-    // Changing a selection starts observation now, never replays cached events.
+    // A new selection starts observation now, never replays a recovery.
     delete this.records[key];
   }
   acknowledge(key){for(const r of Object.values(this.records[key]||{}))delete r.pending;}
-  pending(key,now){return Object.values(this.records[key]||{}).some(r=>r.pending?.until>now);}
-  update(key,view,now,visible=false){
+  color(key){
+    const config=this.config(key);if(!config.enabled)return null;
+    const rows=config.quotas.map(id=>this.records[key]?.[id]).filter(Boolean);
+    return rows.some(r=>r.red)?'red':rows.some(r=>r.pending)?'green':null;
+  }
+  update(key,view,now){
     const config=this.config(key);
     if(!config.enabled){delete this.records[key];return;}
     const records=this.records[key]||={},selected=new Set(config.quotas);
-    for(const id of Object.keys(records)){
-      if(!selected.has(id))delete records[id];
-      else if(records[id].pending?.until<=now)delete records[id].pending;
+    for(const id of Object.keys(records))if(!selected.has(id))delete records[id];
+    if(!view?.checking)for(const q of markerQuotas(view)){
+      if(!selected.has(q.id)||!q.eligible)continue;
+      const failed=view?.error&&(!view.error.includes(':')||view.error.includes(q.source+':'));
+      if(failed||!finite(q.fetchedAt)||q.fetchedAt>now+60000||now-q.fetchedAt>MAX_AGE)continue;
+      const prior=records[q.id]||{},signature=JSON.stringify([q.label,q.source==='features'?'count':q.seconds]);
+      const r=prior.signature===signature?prior:{};
+      if(q.fetchedAt<=(r.at??-Infinity))continue;
+      if(q.critical){r.red=true;delete r.pending;}
+      else if(r.red){r.red=false;r.pending=true;}
+      Object.assign(r,{at:q.fetchedAt,signature,resetAt:q.resetAt});records[q.id]=r;
     }
-    const usage=view?.snapshot?.usage;
-    const failed=view?.error&&(!view.error.includes(':')||view.error.includes('usage:'));
-    if(!view?.checking&&!failed&&usage){
-      for(const q of markerQuotas(view,now)){
-        if(!selected.has(q.id))continue;
-        if(!q.eligible){delete records[q.id];continue;}
-        if(!finite(q.used)||!finite(q.fetchedAt)||q.fetchedAt>now+60000||now-q.fetchedAt>MAX_AGE)continue;
-        const prior=records[q.id]||{},signature=JSON.stringify([q.label,q.seconds]);
-        const r=prior.signature===signature?prior:{};
-        if(q.fetchedAt<=(r.at||0))continue;
-        const deadline=r.armed;
-        // Require a new authoritative window, fresh recovery out of red, and
-        // a reading after the old window ended. Sliding estimates do not count.
-        if(deadline&&now>=deadline&&q.fetchedAt>=deadline&&q.resetAt>deadline+60000&&q.resetAt>now){
-          if(q.used<CRITICAL&&!visible)r.pending={at:now,until:q.resetAt};
-          delete r.armed;
-        }
-        if(q.used>=CRITICAL){delete r.pending;if(q.resetAt>now)r.armed=q.resetAt;}
-        else if(r.armed&&q.fetchedAt<r.armed)delete r.armed;
-        Object.assign(r,{at:q.fetchedAt,signature});records[q.id]=r;
-      }
-    }
-    this.records[key]=records;if(visible)this.acknowledge(key);
+    this.records[key]=records;
   }
   nextReset(now){
+    // Provider dates can bring the next check forward, but never change colour.
     const deadlines=Object.entries(this.records).filter(([key])=>this.config(key).enabled)
-      .flatMap(([,rows])=>Object.values(rows).map(r=>r.armed)).filter(at=>finite(at)&&at>now);
+      .flatMap(([,rows])=>Object.values(rows).filter(r=>r.red).map(r=>r.resetAt)).filter(at=>finite(at)&&at>now);
     return deadlines.length?Math.min(...deadlines):null;
   }
-  describe(key,view,now){
-    const config=this.config(key),quotas=markerQuotas(view,now);
+  describe(key,view){
+    const config=this.config(key),quotas=markerQuotas(view);
     const last=Object.keys(this.preferences);
     // Keep the same retention bound as the quota caches.
     if(last.length>60)for(const old of last.slice(0,last.length-60))if(old!==key){delete this.preferences[old];delete this.records[old];}

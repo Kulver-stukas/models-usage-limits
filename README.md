@@ -22,7 +22,7 @@ Light and dark views of the popup and the widget's three display levels. Both im
 - ChatGPT feature counts, reset credits and available model information when returned by the service.
 - Separate caches for providers and verified account contexts. Multiple tabs for the same context share refresh work.
 - Manual refresh, automatic polling, request backoff and diagnostics without session credentials or chat content.
-- Optional green favicon dots after confirmed resets of selected quota windows. Disabled by default; configured from the active provider account's settings.
+- Optional bright favicon dots: red while a selected quota is critical, green after a fresh reading confirms recovery. Supports percentage windows and ChatGPT feature counts. Disabled by default; configured from the active provider account's settings.
 
 ## Install
 
@@ -52,15 +52,23 @@ Integer warning thresholds are rounded down in used units. With a reference of 5
 
 Version 0.3.6 adds Grok Free counts and experimental paid-pool support. The 0.3.5 store package remains separate and has no Grok permission.
 
-### Reset markers (0.3.7)
+### 0.3.8 rev 0.1 fix
 
-Open a supported provider tab, then choose **Settings → Reset markers**. Enable **Green dot on reset** and select the quota windows to watch. Settings are separate for each verified provider account and plan; five-hour, weekly and other reported windows can be selected independently. Nothing is enabled automatically.
+A usage response without plan metadata now keeps the last known plan for the same verified account. API errors and recovery through a different source no longer detach critical favicon dots from their configured quotas or clear count-colour references. When a previously unknown plan is first identified, its marker settings and observation state follow it unless that plan already has explicit settings. Account changes and explicit plan changes remain separate.
 
-![Reset marker settings in light and dark themes, with example account data](docs/screenshots/reset-marker-settings.png)
+The Chrome package version is **0.3.8.1**, displayed as **0.3.8 rev 0.1**. The default build produces `usage-meter-0.3.8-rev0.1.zip`; `--version 0.3.8` preserves the original 0.3.8 build.
 
-A window is watched after a fresh reading reaches **90% used**. A green dot appears on the background account's favicons only after a fresh provider response confirms a later window and usage below 90%, after the previous deadline. Passing a countdown, an error, a missing window or a stale zero never creates a dot. Viewing any tab for the account acknowledges its dots. The page title and toolbar percentages are unchanged. Events and acknowledgement survive service-worker restarts.
+### Quota status dots (0.3.8)
 
-Claude chat-event-only readings, Gemini DOM estimates, Grok Free's missing reset timestamp and ChatGPT count-only feature estimates cannot confirm a background reset. Their quota rows are disabled with an explanation. Eligibility follows the actual reported data, not an assumed plan name. Frozen or discarded tabs may delay favicon changes until their page resumes; their state remains local. No system notifications or new permissions are used.
+Open a supported provider tab, then choose **Settings → Reset markers**. Enable **Quota status dots** and select the quotas to watch. Settings are separate for each verified provider account and plan. Percentage windows and ChatGPT feature counts can be selected independently. Nothing is enabled automatically; existing 0.3.7 selections are retained when updating.
+
+![Quota status settings in light and dark themes, with example account data](docs/screenshots/reset-marker-settings.png)
+
+The dot uses the **same red-zone rules as the widget**: at least 90% used for percentage windows, or the existing count-colour reference for feature limits. A red reading arms observation and shows a bright red dot. A newer successful reading outside red changes it to bright green, even if the recovery is partial, the reset date has not changed or no reset timestamp is provided. A healthy initial reading does not create a green dot. If any other selected quota is still red, red takes priority.
+
+Background and foreground refreshes both detect recovery. Returning to any tab for the account acknowledges its green dots; a recovery observed while you are already viewing the account stays green until the next return. Red dots remain until a fresh reading confirms recovery. Errors, missing quotas, stale readings and the passage of a reset deadline do not count as recovery. Usage and feature responses are checked independently, so a failure of one does not block the other. State and acknowledgement survive service-worker restarts.
+
+All reported numeric quotas are eligible, including count-only features, windows without reset dates and Claude chat-event readings. Claude Free may update only after a normal chat reply; the extension does not send prompts to obtain a reading. Provider reset dates only schedule an extra refresh; they never change the dot on their own. Frozen or discarded tabs may delay favicon changes until their page resumes. No page titles, toolbar percentages, permissions or system notifications are changed.
 
 The extension overlays the current page icon where it can read it. If the icon cannot be read because of cross-origin restrictions, the marker falls back to a dot on a transparent favicon. A provider's CSP can prevent custom icons. Provider icon changes are observed and the underlying icon is restored when the marker is cleared or the content controller is removed.
 
@@ -135,4 +143,4 @@ Before sharing a problem report, use **Settings → Copy diagnostics** and descr
 The implementation is independent. Grok endpoint and field mappings were investigated using Joshua Wang’s Grok Usage Watch source and changelog; its source has not been copied into this package. Open-source protocol investigations, including CodexBar's Gemini web adapter and Claude quota-event trackers, informed the provider adapters. The widget's visual references were the usage trackers discussed during development; their donation controls and theme presets are not included.
 
 
-Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5` or `--version 0.3.6` for the preserved earlier builds. The current package defaults to 0.3.7.
+Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5`, `--version 0.3.6`, `--version 0.3.7` or `--version 0.3.8` for the preserved earlier builds. The current package defaults to 0.3.8.1 (0.3.8 rev 0.1).
