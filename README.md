@@ -52,6 +52,12 @@ Integer warning thresholds are rounded down in used units. With a reference of 5
 
 Version 0.3.6 adds Grok Free counts and experimental paid-pool support. The 0.3.5 store package remains separate and has no Grok permission.
 
+### 0.3.8 rev 0.1 fix
+
+A usage response without plan metadata now keeps the last known plan for the same verified account. API errors and recovery through a different source no longer detach critical favicon dots from their configured quotas or clear count-colour references. When a previously unknown plan is first identified, its marker settings and observation state follow it unless that plan already has explicit settings. Account changes and explicit plan changes remain separate.
+
+The Chrome package version is **0.3.8.1**, displayed as **0.3.8 rev 0.1**. The default build produces `usage-meter-0.3.8-rev0.1.zip`; `--version 0.3.8` preserves the original 0.3.8 build.
+
 ### Quota status dots (0.3.8)
 
 Open a supported provider tab, then choose **Settings → Reset markers**. Enable **Quota status dots** and select the quotas to watch. Settings are separate for each verified provider account and plan. Percentage windows and ChatGPT feature counts can be selected independently. Nothing is enabled automatically; existing 0.3.7 selections are retained when updating.
@@ -137,4 +143,4 @@ Before sharing a problem report, use **Settings → Copy diagnostics** and descr
 The implementation is independent. Grok endpoint and field mappings were investigated using Joshua Wang’s Grok Usage Watch source and changelog; its source has not been copied into this package. Open-source protocol investigations, including CodexBar's Gemini web adapter and Claude quota-event trackers, informed the provider adapters. The widget's visual references were the usage trackers discussed during development; their donation controls and theme presets are not included.
 
 
-Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5`, `--version 0.3.6` or `--version 0.3.7` for the preserved earlier builds. The current package defaults to 0.3.8.
+Create an upload-ready ZIP (manifest at the archive root) with `python3 tools/package.py`. Use `--version 0.3.5`, `--version 0.3.6`, `--version 0.3.7` or `--version 0.3.8` for the preserved earlier builds. The current package defaults to 0.3.8.1 (0.3.8 rev 0.1).

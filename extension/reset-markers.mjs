@@ -28,6 +28,14 @@ export class ResetMarkers{
   }
   export(){return structuredClone({schema:2,preferences:this.preferences,records:this.records});}
   config(key){return this.preferences[key]||{enabled:false,quotas:[]};}
+  identifyPlan(from,to){
+    // The worker calls this only when the same verified account first reports
+    // its plan. Never overwrite settings already configured for a known plan.
+    if(!from||!to||from===to||!Object.hasOwn(this.preferences,from)||Object.hasOwn(this.preferences,to))return;
+    this.preferences[to]=this.preferences[from];
+    if(this.records[from])this.records[to]=this.records[from];
+    delete this.preferences[from];delete this.records[from];
+  }
   configure(key,enabled,ids,view){
     if(!key)return;
     const allowed=new Set(markerQuotas(view).filter(q=>q.eligible).map(q=>q.id));

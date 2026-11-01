@@ -101,3 +101,11 @@ test('disable and deselect clear observations; dates only schedule an earlier ch
  const m=new ResetMarkers();enable(m);m.update(key,view(),start);
  m.update(key,view(95,start+1,reset+1000),start+1);assert.equal(m.nextReset(start+1),reset+1000);assert.equal(m.color(key),'red');
 });
+test('first plan identification moves observation once and respects existing plan settings',()=>{
+ const unknown=markerKey('gemini','account-a',null),known=key;
+ const m=new ResetMarkers();m.configure(unknown,true,['window:five'],view());m.update(unknown,view(),start);
+ m.identifyPlan(unknown,known);assert.equal(m.color(known),'red');assert(!m.config(unknown).enabled);
+ const restored=new ResetMarkers(m.export());restored.update(known,view(3,start+1),start+1);assert.equal(restored.color(known),'green');
+ const n=new ResetMarkers();n.configure(unknown,true,['window:five'],view());n.update(unknown,view(),start);
+ n.configure(known,false,[],view());n.identifyPlan(unknown,known);assert(!n.config(known).enabled);assert.equal(n.color(known),null);
+});

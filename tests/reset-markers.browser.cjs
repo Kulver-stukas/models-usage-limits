@@ -31,7 +31,9 @@ const image=colour=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http:/
   await page.evaluate(()=>marker.destroy());assert.equal(await page.locator('#native-icon').getAttribute('href'),red);
   // The marker works without the floating widget and restores on reinjection.
   await page.evaluate(()=>{
-   const v={provider:'chatgpt',resetMarker:'red',revision:1},listeners=[];window.sent=[];
+   const v={provider:'chatgpt',resetMarker:'red',revision:1,snapshot:{plan:'free',label:'FREE · test',usage:{fetchedAt:Date.now(),windows:[{id:'five',label:'5-hour limit',seconds:18000,used:95,resetAt:Date.now()+3600000,main:true}]}}},listeners=[];window.sent=[];
+   window.patchUsageView=patch=>{Object.assign(v,patch);v.revision++;for(const notify of listeners)notify({tabViews:{newValue:{1:v}}},'local');};
+   window.showTestWidget=()=>{for(const notify of listeners)notify({settings:{newValue:{widget:true}}},'local');};
    window.setMarkerColor=colour=>{v.resetMarker=colour;v.revision++;for(const notify of listeners)notify({tabViews:{newValue:{1:v}}},'local');};
    globalThis.chrome={runtime:{id:'test',getManifest:()=>({version:LimitsCore.VERSION}),sendMessage:async m=>{sent.push(m);return {ok:true,tabId:1,view:v};}},
     storage:{local:{get:async()=>({settings:{widget:false},tabViews:{1:v}})},onChanged:{addListener:f=>listeners.push(f),removeListener:f=>listeners.splice(listeners.indexOf(f),1)}}};
@@ -40,6 +42,13 @@ const image=colour=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http:/
   assert.equal(await page.locator('#usage-meter-widget').count(),0);
   await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));});
   assert(!await page.evaluate(()=>sent.some(m=>m.type==='marker-seen')));
+  // The worker's critical state must remain visible through an error/recovery.
+  await page.evaluate(()=>{showTestWidget();patchUsageView({error:'usage: network'});});
+  await page.waitForFunction(()=>document.querySelector('#usage-meter-widget')?.shadowRoot.textContent.includes('Last update failed'));
+  await page.evaluate(()=>patchUsageView({error:null}));
+  await page.waitForFunction(()=>!document.querySelector('#usage-meter-widget')?.shadowRoot.textContent.includes('Last update failed'));
+  const recoveredPixel=await page.evaluate(async()=>{const img=new Image();img.src=document.querySelector('#native-icon').href;await img.decode();const c=document.createElement('canvas');c.width=c.height=32;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return [...ctx.getImageData(24,24,1,1).data];});
+  assert.deepEqual(recoveredPixel,[255,23,68,255]);
   await page.evaluate(()=>setMarkerColor('green'));
   await page.waitForFunction(async()=>{const img=new Image();img.src=document.querySelector('#native-icon').href;await img.decode();const c=document.createElement('canvas');c.width=c.height=32;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return ctx.getImageData(24,24,1,1).data[1]===240;});
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
@@ -70,6 +79,6 @@ const image=colour=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http:/
    });
    await fs.mkdir(path.dirname(process.env.METER_MARKER_PREVIEW),{recursive:true});const height=await page.evaluate(()=>Math.ceil(Math.max(...[...document.querySelector('main').children].map(h=>h.getBoundingClientRect().bottom)))+24);await page.setViewportSize({width:680,height});await page.screenshot({path:process.env.METER_MARKER_PREVIEW,clip:{x:0,y:0,width:680,height}});
   }
-  assert.deepEqual(errors,[]);console.log('PASS: red/green favicon pixels, untouched titles, provider icon changes, cancellation, restoration, widget-off integration, acknowledgement and per-account quota settings.');
+  assert.deepEqual(errors,[]);console.log('PASS: red/green favicon pixels, untouched titles, provider icon changes, cancellation, restoration, widget-off integration, API error/recovery, acknowledgement and per-account quota settings.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

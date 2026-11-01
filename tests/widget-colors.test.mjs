@@ -35,3 +35,21 @@ test('an existing cache supplies the initial reference without inventing a plan 
  await engine.refresh();assert.equal(engine.view().snapshot.featureReferences.deep_research,5);
  assert(!('limit' in engine.view().snapshot.init.features[0]));assert(!('usedPercent' in engine.view().snapshot.init.features[0]));
 });
+test('missing plan metadata after a partial failure preserves the same-account colour reference',async()=>{
+ for(const missing of [null,undefined,'']){
+  let now=1800000000000,plan='free',key='seat-a',remaining=5,error=false;
+  const engine=new Engine({now:()=>now,save:async()=>{},load:async()=>({key,plan,label:plan?'FREE · seat':'ACCOUNT · seat',
+   ...(error?{}:{usage:{windows:[],fetchedAt:now}}),init:C.parseInit({limits_progress:[{feature_name:'image_gen',remaining}]},now),errors:error?['usage: network']:[]})});
+  await engine.refresh();now+=60000;plan=missing;remaining=1;error=true;await engine.refresh();
+  assert.equal(engine.view().snapshot.plan,'free');assert.equal(engine.view().snapshot.label,'FREE · seat');
+  assert.equal(engine.view().snapshot.featureReferences.image_gen,5);assert.equal(C.countTone(1,engine.view().snapshot.featureReferences.image_gen),'critical');
+  now+=60000;error=false;await engine.refresh();assert.equal(engine.view().snapshot.plan,'free');assert.equal(engine.view().snapshot.featureReferences.image_gen,5);
+  now+=60000;key='seat-b';await engine.refresh();assert.equal(engine.view().snapshot.plan,null);assert.equal(engine.view().snapshot.featureReferences.image_gen,1);
+ }
+});
+test('legacy empty plan metadata does not discard an unknown-plan count reference',async()=>{
+ const now=1800000000000;
+ const engine=new Engine({initial:{selected:'seat',accounts:{seat:{plan:'',featureReferences:{image_gen:5}}}},now:()=>now,save:async()=>{},
+  load:async()=>({key:'seat',plan:null,init:C.parseInit({limits_progress:[{feature_name:'image_gen',remaining:1}]},now),errors:[]})});
+ await engine.refresh();assert.equal(engine.view().snapshot.plan,null);assert.equal(engine.view().snapshot.featureReferences.image_gen,5);
+});

@@ -85,6 +85,9 @@ function getRecord(context){
     if(!check||check.error||check.hint!==t.context.hint||tabs.get(id)?.context?.scope!==context.scope)throw new Error('context');
     return result;
   },save:async(state,view)=>{
+    const previous=states[context.scope],old=previous?.selected===state.selected?previous.accounts?.[state.selected]:null;
+    if(old&&!old.plan&&view.snapshot?.plan)markers.identifyPlan(
+      markerKey(context.provider,state.selected,null),markerKey(context.provider,state.selected,view.snapshot.plan));
     states[context.scope]=state;views[context.scope]={...view,markerAccountKey:state.selected,revision:++revision};await renderAll();
   }});
   const e=record.engine;

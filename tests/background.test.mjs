@@ -138,3 +138,32 @@ test('active feature-count recovery turns green despite a main usage error; ackn
  await w.message({type:'marker-seen'},1);assert.equal(w.storage.activeView.resetMarker,null);
  w.advance(61000);await w.message({type:'refresh'});assert.equal(w.storage.activeView.resetMarker,'red');
 });
+test('API failure then fallback without plan metadata retains the critical account marker',async()=>{
+ const at=Date.now(),open=[{id:3,url:'https://example.com/'},{id:4,url:'https://gemini.google.com/app'},{id:6,url:'https://gemini.google.com/app/other'}];
+ const load=(p,t)=>{
+  if(t>=at+60000&&t<at+120000)throw Error('network');
+  const b=fixture(p,t);b.usage.windows[0].used=t<at+180000?95:3;
+  if(t>=at+120000){b.plan=null;b.label='GEMINI · test';b.usage.source='Gemini Usage page';}return b;
+ };
+ const w=await worker({time:at,active:4,open,load}),key=w.storage.activeView.resetMarkers.key;
+ await w.message({type:'reset-marker-settings',key,enabled:true,quotas:['window:main:primary']});
+ assert.equal(w.storage.tabViews[4].resetMarker,'red');await w.activate(3);
+ w.advance(61000);await w.alarm('refresh');assert.equal(w.storage.tabViews[4].error,'network');assert.equal(w.storage.tabViews[4].resetMarker,'red');
+ w.advance(61000);await w.alarm('refresh');assert.equal(w.storage.tabViews[4].error,null);
+ assert.equal(w.storage.tabViews[4].resetMarkers.key,key);assert.equal(w.storage.tabViews[4].resetMarker,'red');assert.equal(w.storage.tabViews[6].resetMarker,'red');
+ const again=await worker({storage:w.storage,session:w.session,time:at+123000,active:3,open,load});assert.equal(again.storage.tabViews[4].resetMarker,'red');
+ again.advance(61000);await again.alarm('refresh');assert.equal(again.storage.tabViews[4].resetMarker,'green');
+});
+test('a previously unknown plan identified after an API error keeps its selected critical quotas',async()=>{
+ const at=Date.now(),load=(p,t)=>{
+  const b=fixture(p,t);if(p!=='gemini')return b;
+  if(t>=at+60000&&t<at+120000)throw Error('auth');
+  b.plan=t<at+120000?null:'pro';b.usage.windows[0].used=95;return b;
+ };
+ const w=await worker({time:at,active:4,load}),key=w.storage.activeView.resetMarkers.key;
+ await w.message({type:'reset-marker-settings',key,enabled:true,quotas:['window:main:primary']});
+ w.advance(61000);await w.alarm('refresh');assert.equal(w.storage.tabViews[4].checking,true);assert.equal(w.storage.tabViews[4].resetMarker,null);
+ w.advance(61000);await w.alarm('refresh');assert.equal(w.storage.tabViews[4].checking,false);assert.equal(w.storage.tabViews[4].snapshot.plan,'pro');
+ assert(w.storage.tabViews[4].resetMarkers.enabled);assert.equal(w.storage.tabViews[4].resetMarker,'red');
+ assert(w.storage.tabViews[4].resetMarkers.quotas.find(q=>q.id==='window:main:primary').selected);
+});
