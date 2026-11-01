@@ -1,6 +1,6 @@
-# Usage Meter privacy policy — version 0.3.7
+# Usage Meter privacy policy — version 0.3.8
 
-Effective date: 29 October 2026. Maintainer: Kulver-stukas, the publisher of the Usage Meter project.
+Effective date: 1 November 2026. Maintainer: Kulver-stukas, the publisher of the Usage Meter project.
 
 Usage Meter displays quotas from your existing signed-in ChatGPT, Claude, Gemini and Grok web sessions. The extension has no developer-operated account service, analytics endpoint or advertising service. The maintainer does not automatically receive your usage readings, identifiers, credentials, conversations or browsing activity.
 
@@ -18,7 +18,7 @@ The extension does not request health records, precise location, camera, microph
 
 Chrome extension local storage contains preferences, normalized quota readings, account fingerprints, public request descriptors, local count references and retry state. Session storage also holds tab/context bindings used after service-worker restarts; these can include current provider organization identifiers. Old inactive contexts are pruned when the retained context limit is exceeded. Otherwise cached data can remain until you clear the extension's data or uninstall it. Local storage is browser-managed and is not claimed to be separately encrypted by this extension. Chat messages and raw authentication credentials are not intentionally persisted.
 
-Optional reset markers also store the selected quota IDs and enablement per provider account and plan, the observed critical-window deadline and reading time, and pending reset/acknowledgement state. These records remain local. The feature can read a supported page's existing favicon to overlay a green dot and temporarily replace its icon; it does not modify or retain the page title. Loading an icon may request the icon URL already supplied by the page. No system notification permission is requested.
+Optional reset markers also store the selected quota IDs and enablement per provider account and plan, the observed critical/recovered status, reported reset date and reading time, and pending recovery/acknowledgement state. These records remain local. The feature can read a supported page's existing favicon to overlay a red or green dot and temporarily replace its icon; it does not modify or retain the page title. Loading an icon may request the icon URL already supplied by the page. No system notification permission is requested.
 
 ## Requests and sharing
 
@@ -32,7 +32,7 @@ Copy diagnostics is a user-initiated action. It includes extension/provider vers
 
 You can hide the widget, restrict or revoke site access through Chrome, disable the extension, clear its data, or uninstall it. Removing site access can prevent quota retrieval. Uninstalling removes the extension's local and session data. Logging out of a provider changes its authentication context but is not a request to erase every previously cached quota snapshot.
 
-Reset markers are disabled by default. You can enable or disable them and choose quota windows in Settings → Reset markers while the relevant account is active. Disabling the feature clears its observation and pending event state for that account and plan.
+Reset markers are disabled by default. You can enable or disable them and choose percentage windows or feature counts in Settings → Reset markers while the relevant account is active. Disabling the feature clears its observation and pending event state for that account and plan.
 
 ## Changes and contact
 

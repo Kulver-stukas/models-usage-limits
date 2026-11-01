@@ -3,7 +3,7 @@
   const version=LimitsCore.VERSION;
   if(globalThis.UsageFavicon?.version===version)return;
   function create(){
-    let enabled=false,disposed=false,generation=0,marked=null,own=null,queued=false;
+    let enabled=null,disposed=false,generation=0,marked=null,own=null,queued=false;
     const originals=new Map();
     const icon=n=>n instanceof HTMLLinkElement&&/\bicon\b/i.test(n.rel)&&!/apple-touch/i.test(n.rel);
     const attrs=n=>Object.fromEntries(['href','type','sizes'].map(k=>[k,n.getAttribute(k)]));
@@ -58,9 +58,12 @@
         });
         ctx.drawImage(img,0,0,32,32);canvas.toDataURL('image/png');
       }catch{canvas.width=32;}
-      // A small, white-bordered green dot remains visible on both page themes.
-      ctx.beginPath();ctx.arc(24,24,7,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
-      ctx.beginPath();ctx.arc(24,24,5.5,0,Math.PI*2);ctx.fillStyle='#22a66a';ctx.fill();
+      // Saturated centre, bright rim and soft glow stay visible at tab-icon size.
+      const colour=enabled==='red'?'#ff1744':'#00f060';
+      ctx.shadowColor=colour;ctx.shadowBlur=3;
+      ctx.beginPath();ctx.arc(23.5,23.5,7.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.beginPath();ctx.arc(23.5,23.5,6,0,Math.PI*2);ctx.fillStyle=colour;ctx.fill();
       if(current!==generation||!enabled||disposed)return;
       const previous=marked;marked=canvas.toDataURL('image/png');
       // Existing marked hrefs still refer to the previous generated image.
@@ -69,7 +72,7 @@
       paint();
     }
     return {
-      set(value){if(disposed||enabled===value)return;enabled=value;++generation;if(enabled){watch();void build();}else restore();},
+      set(value){const colour=value==='red'||value==='green'?value:null;if(disposed||enabled===colour)return;enabled=colour;++generation;if(enabled){watch();void build();}else restore();},
       destroy(){enabled=false;disposed=true;++generation;restore();},
     };
   }

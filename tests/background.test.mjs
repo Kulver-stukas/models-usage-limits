@@ -106,8 +106,9 @@ test('configured background reset marks same-account tabs once, survives worker 
  const w=await worker({time:at,open,load});assert(!w.storage.tabViews[4].resetMarker);
  await w.activate(4);const key=w.storage.activeView.resetMarkers.key;
  assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:['window:main:primary']})).ok,true);
+ assert.equal(w.storage.tabViews[4].resetMarker,'red');assert.equal(w.storage.tabViews[6].resetMarker,'red');
  assert(w.alarms.get('quota-reset'));await w.activate(3);w.advance(121000);await w.alarm('quota-reset');
- assert(w.storage.tabViews[4].resetMarker);assert(w.storage.tabViews[6].resetMarker);assert(!w.storage.tabViews[1].resetMarker);assert.equal(w.badges.get(3),'');
+ assert.equal(w.storage.tabViews[4].resetMarker,'green');assert.equal(w.storage.tabViews[6].resetMarker,'green');assert(!w.storage.tabViews[1].resetMarker);assert.equal(w.badges.get(3),'');
  const next=await worker({storage:w.storage,session:w.session,time:deadline+2000,open,load,active:3});
  assert(next.storage.tabViews[4].resetMarker);await next.activate(6);
  assert(!next.storage.tabViews[4].resetMarker);assert(!next.storage.tabViews[6].resetMarker);
@@ -118,4 +119,22 @@ test('marker settings cannot be forged by a page or applied after a provider swi
  assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:[]},4)).ok,false);
  await w.activate(2);assert.equal((await w.message({type:'reset-marker-settings',key,enabled:true,quotas:[]})).ok,false);
  assert(!w.storage.activeView.resetMarkers.enabled);
+});
+test('active feature-count recovery turns green despite a main usage error; acknowledgement only clears green',async()=>{
+ const at=Date.now(),load=(p,t)=>{
+  const b=fixture(p,t);if(p!=='chatgpt')return b;
+  b.init={fetchedAt:t,features:[{id:'image_gen',label:'Image generation',remaining:t>at+60000&&t<at+120000||t>=at+180000?1:5,resetAt:null}]};
+  if(t>=at+120000){delete b.usage;b.errors=['usage: network'];}return b;
+ };
+ const w=await worker({time:at,load});
+ w.advance(61000);await w.message({type:'refresh'});
+ const key=w.storage.activeView.resetMarkers.key;
+ await w.message({type:'reset-marker-settings',key,enabled:true,quotas:['feature:image_gen']});
+ assert.equal(w.storage.activeView.resetMarker,'red');
+ await w.message({type:'marker-seen'},1);assert.equal(w.storage.activeView.resetMarker,'red');
+ w.advance(61000);await w.message({type:'refresh'});
+ assert.equal(w.storage.activeView.resetMarker,'green');
+ await w.message({type:'theme',dark:true},1);assert.equal(w.storage.activeView.resetMarker,'green');
+ await w.message({type:'marker-seen'},1);assert.equal(w.storage.activeView.resetMarker,null);
+ w.advance(61000);await w.message({type:'refresh'});assert.equal(w.storage.activeView.resetMarker,'red');
 });

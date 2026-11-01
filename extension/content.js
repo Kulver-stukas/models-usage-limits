@@ -64,7 +64,7 @@
   }
   function render(){
     if(disposed||dragging)return;
-    favicon?.set(supported()&&view.resetMarker===true);
+    favicon?.set(supported()?view.resetMarker:null);
     if(!settings.widget||!supported()){host?.remove();host=null;shadow=null;return;}
     if(!host||!host.isConnected) {
       host=document.createElement('div');host.id='usage-meter-widget';
@@ -108,7 +108,7 @@
     lastHeartbeat=Date.now();window.postMessage({usageMeter:'claude-observer-alive'},location.origin);
   }
   function onVisible(){if(document.visibilityState==='visible'){
-    if(document.hasFocus()&&view.resetMarker)void send({type:'marker-seen'});
+    if(document.hasFocus()&&view.resetMarker==='green')void send({type:'marker-seen'});
     keepObserver();
     void context();void theme();
     if(Date.now()-lastWake>60000){lastWake=Date.now();void send({type:'refresh'});}

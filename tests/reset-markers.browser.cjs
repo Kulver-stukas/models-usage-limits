@@ -12,30 +12,37 @@ const image=colour=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http:/
   const blue=image('#1122aa'),red=image('#aa2211');
   await page.evaluate(href=>{const n=document.createElement('link');n.id='native-icon';n.rel='icon';n.href=href;document.head.append(n);},blue);
   for(const f of ['shared.js','favicon.js','ui.js'])await page.addScriptTag({path:path.join(extension,f)});
-  await page.evaluate(()=>{window.marker=UsageFavicon.create();marker.set(true);});
+  await page.evaluate(()=>{window.marker=UsageFavicon.create();marker.set('green');});
   await page.waitForFunction(()=>document.querySelector('#native-icon').href.startsWith('data:image/png'));
   assert.equal(await page.title(),'Original chat title');
   const pixels=await page.evaluate(async()=>{const img=new Image();img.src=document.querySelector('#native-icon').href;await img.decode();const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d');x.drawImage(img,0,0);return {base:[...x.getImageData(3,3,1,1).data],dot:[...x.getImageData(24,24,1,1).data]};});
-  assert.deepEqual(pixels.base,[17,34,170,255]);assert.deepEqual(pixels.dot,[34,166,106,255]);
+  assert.deepEqual(pixels.base,[17,34,170,255]);assert.deepEqual(pixels.dot,[0,240,96,255]);
+  await page.evaluate(()=>marker.set('red'));
+  await page.waitForFunction(async()=>{const img=new Image();img.src=document.querySelector('#native-icon').href;await img.decode();const c=document.createElement('canvas');c.width=c.height=32;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return ctx.getImageData(24,24,1,1).data[0]===255;});
   const previous=await page.locator('#native-icon').getAttribute('href');
   await page.evaluate(href=>{document.title='A new chat title from the provider';document.querySelector('#native-icon').href=href;},red);
   await page.waitForFunction(old=>document.querySelector('#native-icon').href.startsWith('data:image/png')&&document.querySelector('#native-icon').href!==old,previous);
-  await page.evaluate(()=>marker.set(false));assert.equal(await page.locator('#native-icon').getAttribute('href'),red);assert.equal(await page.title(),'A new chat title from the provider');
+  await page.evaluate(()=>marker.set(null));assert.equal(await page.locator('#native-icon').getAttribute('href'),red);assert.equal(await page.title(),'A new chat title from the provider');
   assert.equal(await page.locator('#native-icon').getAttribute('type'),null);assert.equal(await page.locator('#native-icon').getAttribute('sizes'),null);
   assert.equal(await page.locator('[data-usage-meter-icon]').count(),0);
-  await page.evaluate(()=>{marker.set(true);marker.set(false);});
+  await page.evaluate(()=>{marker.set('green');marker.set(null);});
   assert.equal(await page.locator('#native-icon').getAttribute('href'),red);
-  await page.evaluate(()=>{marker.set(true);});await page.waitForFunction(()=>document.querySelector('[data-usage-meter-icon]'));
+  await page.evaluate(()=>{marker.set('green');});await page.waitForFunction(()=>document.querySelector('[data-usage-meter-icon]'));
   await page.evaluate(()=>marker.destroy());assert.equal(await page.locator('#native-icon').getAttribute('href'),red);
   // The marker works without the floating widget and restores on reinjection.
   await page.evaluate(()=>{
-   const v={provider:'chatgpt',resetMarker:true,revision:1},listeners=[];window.sent=[];
-   globalThis.chrome={runtime:{id:'test',getManifest:()=>({version:'0.3.7'}),sendMessage:async m=>{sent.push(m);return {ok:true,tabId:1,view:v};}},
+   const v={provider:'chatgpt',resetMarker:'red',revision:1},listeners=[];window.sent=[];
+   window.setMarkerColor=colour=>{v.resetMarker=colour;v.revision++;for(const notify of listeners)notify({tabViews:{newValue:{1:v}}},'local');};
+   globalThis.chrome={runtime:{id:'test',getManifest:()=>({version:LimitsCore.VERSION}),sendMessage:async m=>{sent.push(m);return {ok:true,tabId:1,view:v};}},
     storage:{local:{get:async()=>({settings:{widget:false},tabViews:{1:v}})},onChanged:{addListener:f=>listeners.push(f),removeListener:f=>listeners.splice(listeners.indexOf(f),1)}}};
   });
   await page.addScriptTag({path:path.join(extension,'content.js')});await page.waitForFunction(()=>document.querySelector('[data-usage-meter-icon]'));
   assert.equal(await page.locator('#usage-meter-widget').count(),0);
   await page.evaluate(()=>{window.dispatchEvent(new Event('focus'));});
+  assert(!await page.evaluate(()=>sent.some(m=>m.type==='marker-seen')));
+  await page.evaluate(()=>setMarkerColor('green'));
+  await page.waitForFunction(async()=>{const img=new Image();img.src=document.querySelector('#native-icon').href;await img.decode();const c=document.createElement('canvas');c.width=c.height=32;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);return ctx.getImageData(24,24,1,1).data[1]===240;});
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await page.waitForFunction(()=>sent.some(m=>m.type==='marker-seen'));
   await page.evaluate(()=>window.__usageMeterController.destroy());assert.equal(await page.locator('#native-icon').getAttribute('href'),red);
   assert.equal(await page.title(),'A new chat title from the provider');
@@ -44,25 +51,25 @@ const image=colour=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http:/
    const root=document.querySelector('#popup'),config={key:'gemini/account/pro',enabled:false,quotas:[
     {id:'five',label:'5-hour limit',eligible:true,selected:false},
     {id:'week',label:'Weekly limit',eligible:true,selected:false},
-    {id:'count',label:'Deep research',eligible:false,selected:false,reason:'Only a remaining count is reported.'}]};
+    {id:'count',label:'Deep research',eligible:true,selected:false,reason:'Uses the widget’s count colours.'}]};
    window.v={provider:'gemini',snapshot:{plan:'pro',label:'PRO · demo'},resetMarkers:config};window.markerActions=[];
    window.renderSettings=()=>LimitsUI.render(root,v,{}, {markers:value=>{markerActions.push(value);config.enabled=value.enabled;for(const q of config.quotas)q.selected=value.quotas.includes(q.id);renderSettings();}},{screen:'reset-markers'});
    renderSettings();
   });
-  const toggle=page.getByRole('checkbox',{name:'Green dot on reset',exact:true});assert(!await toggle.isChecked());assert(await page.getByRole('checkbox',{name:'5-hour limit',exact:true}).isDisabled());
+  const toggle=page.getByRole('checkbox',{name:'Quota status dots',exact:true});assert(!await toggle.isChecked());assert(await page.getByRole('checkbox',{name:'5-hour limit',exact:true}).isDisabled());
   await toggle.check();await page.getByRole('checkbox',{name:'Weekly limit',exact:true}).check();
-  assert(!await page.getByRole('checkbox',{name:'5-hour limit',exact:true}).isChecked());assert(await page.getByRole('checkbox',{name:'Deep research',exact:true}).isDisabled());
+  assert(!await page.getByRole('checkbox',{name:'5-hour limit',exact:true}).isChecked());assert(await page.getByRole('checkbox',{name:'Deep research',exact:true}).isEnabled());
   assert.deepEqual(await page.evaluate(()=>markerActions.at(-1)),{key:'gemini/account/pro',enabled:true,quotas:['week']});
-  await page.evaluate(()=>{v={provider:'claude',snapshot:{plan:'free',label:'CLAUDE · demo'},resetMarkers:{key:'claude/account/free',enabled:false,quotas:[{id:'five',label:'5-hour limit',eligible:false,reason:'This plan reports usage only after a chat reply.'}]}};renderSettings();});
-  assert(await page.getByRole('checkbox',{name:'Green dot on reset',exact:true}).isDisabled());assert.match(await page.locator('#popup').textContent(),/after a chat reply/);
+  await page.evaluate(()=>{v={provider:'claude',snapshot:{plan:'free',label:'CLAUDE · demo'},resetMarkers:{key:'claude/account/free',enabled:false,quotas:[{id:'five',label:'5-hour limit',eligible:true,reason:'Updates after a normal chat reply.'}]}};renderSettings();});
+  assert(await page.getByRole('checkbox',{name:'Quota status dots',exact:true}).isEnabled());assert.match(await page.locator('#popup').textContent(),/after a normal chat reply/);
   if(process.env.METER_MARKER_PREVIEW){
    await page.evaluate(()=>{
     document.body.innerHTML='<main style="display:flex;gap:24px;padding:24px"></main>';document.body.style.cssText='margin:0;background:#eef2ef';
     for(const dark of [false,true]){const host=document.createElement('div');document.querySelector('main').append(host);host.attachShadow({mode:'open'});
       LimitsUI.render(host.shadowRoot,{provider:'gemini',snapshot:{plan:'pro',label:'PRO · demo'},resetMarkers:{key:'example',enabled:true,quotas:[{id:'five',label:'5-hour limit',eligible:true,selected:true},{id:'week',label:'Weekly limit',eligible:true,selected:false}]}},{},{},{screen:'reset-markers',dark});}
    });
-   await fs.mkdir(path.dirname(process.env.METER_MARKER_PREVIEW),{recursive:true});await page.screenshot({path:process.env.METER_MARKER_PREVIEW,clip:{x:0,y:0,width:680,height:516}});
+   await fs.mkdir(path.dirname(process.env.METER_MARKER_PREVIEW),{recursive:true});const height=await page.evaluate(()=>Math.ceil(Math.max(...[...document.querySelector('main').children].map(h=>h.getBoundingClientRect().bottom)))+24);await page.setViewportSize({width:680,height});await page.screenshot({path:process.env.METER_MARKER_PREVIEW,clip:{x:0,y:0,width:680,height}});
   }
-  assert.deepEqual(errors,[]);console.log('PASS: favicon pixels, untouched titles, provider icon changes, cancellation, restoration, widget-off integration, acknowledgement and per-account quota settings.');
+  assert.deepEqual(errors,[]);console.log('PASS: red/green favicon pixels, untouched titles, provider icon changes, cancellation, restoration, widget-off integration, acknowledgement and per-account quota settings.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1;});

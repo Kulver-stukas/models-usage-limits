@@ -22,7 +22,7 @@ function tabView(id){
   const scope=tab.context?.scope,view=tab.error?{snapshot:null,checking:false,error:tab.error}:views[scope]||{snapshot:null,checking:true};
   const key=view.snapshot?accountMarkerKey(scope):null;
   return {provider:tab.provider,scope,...view,dark:tab.dark,
-    resetMarkers:markers.describe(key,view,Date.now()),resetMarker:Boolean(key&&markers.pending(key,Date.now()))};
+    resetMarkers:markers.describe(key,view),resetMarker:key?markers.color(key):null};
 }
 function paintTab(id){
   // Per-tab action state prevents a slow response from repainting another site.
@@ -49,9 +49,9 @@ function paintTab(id){
   });return badgeWrites;
 }
 async function publish(){
-  const at=Date.now(),visible=browserFocused?accountMarkerKey(tabs.get(activeId)?.context?.scope):null;
+  const at=Date.now();
   for(const [scope,view] of Object.entries(views)){
-    const key=accountMarkerKey(scope);if(key)markers.update(key,view,at,key===visible);
+    const key=accountMarkerKey(scope);if(key)markers.update(key,view,at);
   }
   const next=markers.nextReset(at),alarm=await chrome.alarms.get('quota-reset');
   if(next&&(!alarm||Math.abs(alarm.scheduledTime-(next+1000))>1000))await chrome.alarms.create('quota-reset',{when:next+1000});
@@ -148,6 +148,8 @@ async function captureClaude(id){
 async function selectActive(){
   const [tab]=await chrome.tabs.query({active:true,lastFocusedWindow:true});activeId=tab?.id??null;
   if(tab)await bindTab(tab);else await publish();
+  const key=browserFocused&&accountMarkerKey(tabs.get(activeId)?.context?.scope);
+  if(key){markers.acknowledge(key);await publish();}
   if(tabs.get(activeId)?.context)void refreshTab(activeId).catch(()=>{});
 }
 async function injectOpenTabs(){
